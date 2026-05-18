@@ -53,13 +53,14 @@ venv/
 # Environment
 .env
 .env.*
+!.env.example
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Orphaned cache artifact
-net_state/
+# Edu server virtual environment (inside net_state)
+net_state/edu_routing/
 
 
 # videio

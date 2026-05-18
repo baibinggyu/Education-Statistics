@@ -1,0 +1,20 @@
+[Unit]
+Description=Edu Server
+After=network.target mariadb.service
+
+[Service]
+Type=exec
+User=bai-yu
+Group=bai-yu
+WorkingDirectory=/opt/edu/edu_server
+
+# 环境变量
+EnvironmentFile=-/opt/edu/edu_server/.env
+
+ExecStart=/opt/edu/edu_server/run.sh
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
