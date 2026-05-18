@@ -49,7 +49,7 @@ class Responsive {
 
   /// Max extent for SliverGridDelegateWithMaxCrossAxisExtent
   double get maxCrossAxisExtent => switch (breakpoint) {
-    Breakpoint.compact => 180,
+    Breakpoint.compact => 220,
     Breakpoint.medium => 200,
     Breakpoint.expanded => 220,
   };
