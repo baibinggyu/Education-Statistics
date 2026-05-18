@@ -40,6 +40,7 @@ public:
     /// 构造时自动从 Config::timeout_ms 读取初始值。
     void setTimeout(int ms) { timeout_ms_ = ms; }
     int  timeout() const { return timeout_ms_; }
+    const std::string& model() const { return config_.model; }
 
     /// 发送消息列表，返回结构化结果。
     ChatResponse chat(const std::vector<Message>& messages);

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import FluentUI
+import EduStat.Backend 1.0
 
 ApplicationWindow {
     id: appWindow
@@ -170,7 +171,7 @@ ApplicationWindow {
         "班级信息", "点名", "组队", "学生信息",
         "学科管理", "增加学科", "开课申请",
         "视频播放", "课程资源", "发布公告",
-        "倒计时", "发消息"
+        "倒计时", "发消息", "AI 助手"
     ]
 
     // ===== PAGE COMPONENTS =====
@@ -178,7 +179,7 @@ ApplicationWindow {
         classInfoComp, rollCallComp, teamUpComp,
         studentInfoComp, subjectManageComp, addSubjectComp,
         courseAppComp, videoPlayerComp, resourceComp,
-        announcementComp, countdownComp, messageComp
+        announcementComp, countdownComp, messageComp, chatComp
     ]
 
     Component { id: loginComp; LoginPage { onLogin: loggedIn = true } }
@@ -194,4 +195,5 @@ ApplicationWindow {
     Component { id: announcementComp; AnnouncementPage {} }
     Component { id: countdownComp; CountdownPage {} }
     Component { id: messageComp; MessagePage {} }
+    Component { id: chatComp; ChatPage {} }
 }

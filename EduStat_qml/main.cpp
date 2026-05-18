@@ -1,11 +1,15 @@
 #include <QApplication>
 #include <QQmlApplicationEngine>
 
+#include "chat_backend.h"
+
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     app.setApplicationName("EduStat 2.0 教学统计系统");
     app.setOrganizationName("Edu");
+
+    qmlRegisterType<ChatBackend>("EduStat.Backend", 1, 0, "ChatBackend");
 
     QQmlApplicationEngine engine;
 
