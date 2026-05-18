@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/">
+        <file>checkmark.svg</file>
+        <file>icon.png</file>
+    </qresource>
+</RCC>

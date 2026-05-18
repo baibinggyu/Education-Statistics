@@ -1,0 +1,68 @@
+# Build directories
+build/
+out/
+
+# C/C++ compiled artifacts
+*.o
+*.obj
+*.a
+*.so
+*.dll
+*.exe
+
+# Qt
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+*_autogen/
+*.pro.user
+CMakeLists.txt.user
+.qtcreator/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+*.egg
+dist/
+.Python
+
+# Virtual environment
+edu_routing/
+venv/
+.venv/
+
+# IDE / editors
+.idea/
+.vscode/
+.qtc-clangd/
+*.swp
+*.swo
+*~
+
+# Database (SQLite — generated at runtime)
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Orphaned cache artifact
+net_state/
+
+
+# videio
+*.mp4 
+*.mp3
+

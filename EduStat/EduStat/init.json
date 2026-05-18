@@ -1,0 +1,13 @@
+{
+    "course":[
+        {
+            "name": "电子技术基础",
+            "classes" : ["师范一班","师范二班","师范三班"]
+        },
+        {
+            "name" :  "学科教学设计",
+            "classes" : ["师范一班","师范二班","师范三班"]
+        }
+    ],
+    "deepseekApi" : ${YourDeepSeekApi}
+}

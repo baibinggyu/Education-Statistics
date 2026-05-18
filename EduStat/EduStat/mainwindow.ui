@@ -1,0 +1,1115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>800</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>MainWindow</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QHBoxLayout" name="horizontalLayout_11">
+    <item>
+     <layout class="QHBoxLayout" name="wholeGridLayout" stretch="0,1">
+      <item>
+       <widget class="QFrame" name="sideBarFrame">
+        <property name="minimumSize">
+         <size>
+          <width>168</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>205</width>
+          <height>16777215</height>
+         </size>
+        </property>
+        <property name="frameShape">
+         <enum>QFrame::Shape::StyledPanel</enum>
+        </property>
+        <layout class="QVBoxLayout" name="sideBarVerticalLayout">
+         <item>
+          <widget class="QLabel" name="appTitleLabel">
+           <property name="text">
+            <string>EduStat</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="appSubtitleLabel">
+           <property name="text">
+            <string>教学统计工作台</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QFrame" name="subjectSelectorFrame">
+           <property name="frameShape">
+            <enum>QFrame::Shape::StyledPanel</enum>
+           </property>
+           <layout class="QVBoxLayout" name="classVerticalLayout">
+            <item>
+             <widget class="QLabel" name="subjectLabel">
+              <property name="text">
+               <string>当前学科</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="subjectComboBox"/>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="navSectionLabel">
+           <property name="text">
+            <string>功能导航</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <layout class="QVBoxLayout" name="functionGridLayout">
+           <item>
+            <widget class="QPushButton" name="classInformationPushButton">
+             <property name="text">
+              <string>班级信息</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="exportInformationPushButton">
+             <property name="text">
+              <string>学期报告和成绩导出</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="subjectManagePushButton">
+             <property name="text">
+              <string>学科管理</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="studentInfomationpushButton">
+             <property name="text">
+              <string>学生信息</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="rollCallPushButton">
+             <property name="text">
+              <string>点名</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="teamUpPushButton">
+             <property name="text">
+              <string>组队</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <spacer name="verticalSpacer_2">
+           <property name="orientation">
+            <enum>Qt::Orientation::Vertical</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>40</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QStackedWidget" name="stackedWidget">
+        <property name="currentIndex">
+         <number>0</number>
+        </property>
+        <widget class="QWidget" name="classInformationPage">
+         <layout class="QHBoxLayout" name="horizontalLayout_3" stretch="13,7">
+          <item>
+           <layout class="QVBoxLayout" name="classInfoMainVerticalLayout">
+            <item>
+             <widget class="QFrame" name="classInfoOverviewFrame">
+              <property name="frameShape">
+               <enum>QFrame::Shape::StyledPanel</enum>
+              </property>
+              <layout class="QVBoxLayout" name="verticalLayout_2">
+               <item>
+                <layout class="QHBoxLayout" name="classInfoHeaderLayout">
+                 <item>
+                  <widget class="QLabel" name="classInfoHeaderLabel">
+                   <property name="text">
+                    <string>班级信息总览</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <spacer name="horizontalSpacer_4">
+                   <property name="orientation">
+                    <enum>Qt::Orientation::Horizontal</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>40</width>
+                     <height>20</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="classRefreshPushButton">
+                   <property name="text">
+                    <string>刷新分析</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <widget class="QLabel" name="classInfoHintLabel">
+                 <property name="text">
+                  <string>自动汇总当前课程的成绩分布、单元走势和班级构成；有网络时优先请求 DeepSeek 生成建议。</string>
+                 </property>
+                 <property name="wordWrap">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="classInfoCardLayout">
+                 <item>
+                  <widget class="QFrame" name="studentCountCardFrame">
+                   <property name="frameShape">
+                    <enum>QFrame::Shape::StyledPanel</enum>
+                   </property>
+                   <layout class="QVBoxLayout" name="verticalLayout_19">
+                    <item>
+                     <widget class="QLabel" name="studentCountTitleLabel">
+                      <property name="text">
+                       <string>学生总数</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QLabel" name="studentCountValueLabel">
+                      <property name="text">
+                       <string>--</string>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QFrame" name="overallAverageCardFrame">
+                   <property name="frameShape">
+                    <enum>QFrame::Shape::StyledPanel</enum>
+                   </property>
+                   <layout class="QVBoxLayout" name="verticalLayout_20">
+                    <item>
+                     <widget class="QLabel" name="overallAverageTitleLabel">
+                      <property name="text">
+                       <string>整体均分</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QLabel" name="overallAverageValueLabel">
+                      <property name="text">
+                       <string>--</string>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QFrame" name="bestUnitCardFrame">
+                   <property name="frameShape">
+                    <enum>QFrame::Shape::StyledPanel</enum>
+                   </property>
+                   <layout class="QVBoxLayout" name="verticalLayout_21">
+                    <item>
+                     <widget class="QLabel" name="bestUnitTitleLabel">
+                      <property name="text">
+                       <string>表现最强单元</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QLabel" name="bestUnitValueLabel">
+                      <property name="text">
+                       <string>--</string>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QFrame" name="weakestUnitCardFrame">
+                   <property name="frameShape">
+                    <enum>QFrame::Shape::StyledPanel</enum>
+                   </property>
+                   <layout class="QVBoxLayout" name="verticalLayout_22">
+                    <item>
+                     <widget class="QLabel" name="weakestUnitTitleLabel">
+                      <property name="text">
+                       <string>重点跟进单元</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QLabel" name="weakestUnitValueLabel">
+                      <property name="text">
+                       <string>--</string>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <layout class="QGridLayout" name="classInfoChartGridLayout" rowstretch="3,4" columnstretch="1,1">
+              <item row="0" column="0">
+               <widget class="QFrame" name="barChartFrame">
+                <property name="frameShape">
+                 <enum>QFrame::Shape::StyledPanel</enum>
+                </property>
+                <layout class="QVBoxLayout" name="verticalLayout_23">
+                 <item>
+                  <widget class="QLabel" name="barChartTitleLabel">
+                   <property name="text">
+                    <string>成绩段分布</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QChartView" name="barChart" native="true"/>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QFrame" name="pieChartFrame">
+                <property name="frameShape">
+                 <enum>QFrame::Shape::StyledPanel</enum>
+                </property>
+                <layout class="QVBoxLayout" name="verticalLayout_24">
+                 <item>
+                  <widget class="QLabel" name="pieChartTitleLabel">
+                   <property name="text">
+                    <string>班级构成</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QChartView" name="pieChart" native="true"/>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item row="1" column="0" colspan="2">
+               <widget class="QFrame" name="lineChartFrame">
+                <property name="frameShape">
+                 <enum>QFrame::Shape::StyledPanel</enum>
+                </property>
+                <layout class="QVBoxLayout" name="verticalLayout_25">
+                 <item>
+                  <widget class="QLabel" name="lineChartTitleLabel">
+                   <property name="text">
+                    <string>单元均分走势</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QChartView" name="lineChart" native="true"/>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+             </layout>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QFrame" name="classAnalyzeSidePanel">
+            <property name="minimumSize">
+             <size>
+              <width>320</width>
+              <height>0</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>420</width>
+              <height>16777215</height>
+             </size>
+            </property>
+            <property name="frameShape">
+             <enum>QFrame::Shape::StyledPanel</enum>
+            </property>
+            <layout class="QVBoxLayout" name="classAnalyzeVerticalLayout" stretch="0,0,0,1,0,1">
+             <item>
+              <widget class="QLabel" name="classAnalyzeLabel">
+               <property name="text">
+                <string>教学分析建议</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="analysisStatusValueLabel">
+               <property name="text">
+                <string>分析来源：等待刷新</string>
+               </property>
+               <property name="wordWrap">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="networkStatusValueLabel">
+               <property name="text">
+                <string>网络状态：等待检测</string>
+               </property>
+               <property name="wordWrap">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QTextEdit" name="classAnalyzetextEdit"/>
+             </item>
+             <item>
+              <widget class="QLabel" name="promptPreviewLabel">
+               <property name="text">
+                <string>提示词预览</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QTextEdit" name="promptPreviewTextEdit"/>
+             </item>
+            </layout>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+        <widget class="QWidget" name="rollCallPage">
+         <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="0,1">
+          <item>
+           <widget class="QFrame" name="rollCallSidePanel">
+            <property name="minimumSize">
+             <size>
+              <width>250</width>
+              <height>0</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>320</width>
+              <height>16777215</height>
+             </size>
+            </property>
+            <property name="frameShape">
+             <enum>QFrame::Shape::StyledPanel</enum>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_13">
+             <item>
+              <widget class="QLabel" name="rollCallTitleLabel">
+               <property name="text">
+                <string>点名控制台</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="rollCallSummaryLabel">
+               <property name="text">
+                <string>从当前课程学生池中抽取学生，适合课堂提问、签到和临时互动。</string>
+               </property>
+               <property name="wordWrap">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="rollCallRuleLabel">
+               <property name="text">
+                <string>抽取设置</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <layout class="QFormLayout" name="formLayout_3">
+               <item row="0" column="0">
+                <widget class="QLabel" name="label_2">
+                 <property name="text">
+                  <string>抽取人数</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="1">
+                <widget class="QSpinBox" name="spinBox">
+                 <property name="minimum">
+                  <number>1</number>
+                 </property>
+                 <property name="maximum">
+                  <number>15</number>
+                 </property>
+                 <property name="value">
+                  <number>1</number>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="0">
+                <widget class="QLabel" name="rollCallModeLabel">
+                 <property name="text">
+                  <string>点名模式</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="1">
+                <widget class="QComboBox" name="rollCallModeComboBox">
+                 <item>
+                  <property name="text">
+                   <string>随机抽取</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>尽量不重复</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>只抽未点到</string>
+                  </property>
+                 </item>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QCheckBox" name="rollCallShowClassCheckBox">
+               <property name="text">
+                <string>结果里显示班级</string>
+               </property>
+               <property name="checked">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="rollCallHintLabel">
+               <property name="text">
+                <string>“尽量不重复”会优先避开本轮历史中已经点过的学生，“只抽未点到”适合一轮轮把全班点完。</string>
+               </property>
+               <property name="wordWrap">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <layout class="QHBoxLayout" name="horizontalLayout_14">
+               <item>
+                <widget class="QPushButton" name="pushButton_2">
+                 <property name="text">
+                  <string>开始点名</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="resetRollCallPushButton">
+                 <property name="text">
+                  <string>重置记录</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QLabel" name="rollCallHistoryLabel">
+               <property name="text">
+                <string>本轮历史</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QListWidget" name="rollCallHistoryListWidget"/>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <layout class="QVBoxLayout" name="verticalLayout">
+            <item>
+             <widget class="QLabel" name="label">
+              <property name="text">
+               <string>点名结果</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QFrame" name="rollCallResultFrame">
+              <property name="frameShape">
+               <enum>QFrame::Shape::StyledPanel</enum>
+              </property>
+              <layout class="QVBoxLayout" name="verticalLayout_14">
+               <item>
+                <widget class="QLabel" name="rollCallResultSummaryLabel">
+                 <property name="text">
+                  <string>点击“开始点名”后，这里会展示本轮结果。</string>
+                 </property>
+                 <property name="wordWrap">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QFrame" name="rollCallHighlightFrame">
+                 <property name="frameShape">
+                  <enum>QFrame::Shape::StyledPanel</enum>
+                 </property>
+                 <layout class="QVBoxLayout" name="verticalLayout_15">
+                  <item>
+                   <widget class="QLabel" name="rollCallHighlightTitleLabel">
+                    <property name="text">
+                     <string>本轮主结果</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="rollCallHighlightNameLabel">
+                    <property name="text">
+                     <string>等待点名</string>
+                    </property>
+                    <property name="alignment">
+                     <set>Qt::AlignmentFlag::AlignCenter</set>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="rollCallHighlightMetaLabel">
+                    <property name="text">
+                     <string>学号 / 班级 会显示在这里</string>
+                    </property>
+                    <property name="alignment">
+                     <set>Qt::AlignmentFlag::AlignCenter</set>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPlainTextEdit" name="plainTextEdit"/>
+               </item>
+              </layout>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+        <widget class="QWidget" name="teamUpPage">
+         <layout class="QHBoxLayout" name="horizontalLayout_12" stretch="0,1">
+          <item>
+           <widget class="QFrame" name="teamSidePanel">
+            <property name="minimumSize">
+             <size>
+              <width>250</width>
+              <height>0</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>320</width>
+              <height>16777215</height>
+             </size>
+            </property>
+            <property name="frameShape">
+             <enum>QFrame::Shape::StyledPanel</enum>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_12">
+             <item>
+              <widget class="QLabel" name="currentTeamGroupLabel">
+               <property name="text">
+                <string>当前组队</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="currentTeamSummaryLabel">
+               <property name="text">
+                <string>还没有生成组队</string>
+               </property>
+               <property name="wordWrap">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="teamRuleLabel">
+               <property name="text">
+                <string>随机组队规则</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <layout class="QFormLayout" name="formLayout_2">
+               <item row="0" column="0">
+                <widget class="QLabel" name="teamSizeLabel">
+                 <property name="text">
+                  <string>每组人数</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="1">
+                <widget class="QSpinBox" name="teamSizeSpinBox">
+                 <property name="minimum">
+                  <number>2</number>
+                 </property>
+                 <property name="maximum">
+                  <number>8</number>
+                 </property>
+                 <property name="value">
+                  <number>3</number>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="0">
+                <widget class="QLabel" name="teamModeLabel">
+                 <property name="text">
+                  <string>分组方式</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="1">
+                <widget class="QComboBox" name="teamModeComboBox">
+                 <item>
+                  <property name="text">
+                   <string>随机分组</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>强配弱平衡</string>
+                  </property>
+                 </item>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QCheckBox" name="useScoreCheckBox">
+               <property name="text">
+                <string>参考当前成绩进行分组</string>
+               </property>
+               <property name="checked">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="teamRuleHintLabel">
+               <property name="text">
+                <string>“强配弱平衡”会尽量把高分和低分学生交错分到不同小组。</string>
+               </property>
+               <property name="wordWrap">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <layout class="QHBoxLayout" name="horizontalLayout_13">
+               <item>
+                <widget class="QPushButton" name="generateTeamsPushButton">
+                 <property name="text">
+                  <string>生成组队</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="saveTeamHistoryPushButton">
+                 <property name="text">
+                  <string>保存到历史</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QLabel" name="teamHistoryLabel">
+               <property name="text">
+                <string>历史组队</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QListWidget" name="teamHistoryListWidget"/>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <layout class="QVBoxLayout" name="verticalLayout_7">
+            <item>
+             <widget class="QLabel" name="teamCanvasLabel">
+              <property name="text">
+               <string>当前队组</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QScrollArea" name="teamUpScrollArea">
+              <property name="widgetResizable">
+               <bool>true</bool>
+              </property>
+              <widget class="QWidget" name="teampUpScrollAreaWidgetContents">
+               <property name="geometry">
+                <rect>
+                 <x>0</x>
+                 <y>0</y>
+                 <width>476</width>
+                 <height>472</height>
+                </rect>
+               </property>
+              </widget>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+        <widget class="QWidget" name="studentInformationPage">
+         <layout class="QVBoxLayout" name="verticalLayout_5">
+          <item>
+           <layout class="QHBoxLayout" name="studentInformationHorizontalLayout" stretch="2,0,5,1,2,2,0">
+            <item>
+             <widget class="QPushButton" name="AddStudentSimplePushButton">
+              <property name="text">
+               <string>+新增</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="studentDeleteSelectedPushButton">
+              <property name="text">
+               <string>-删除选中</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="searchLineEdit"/>
+            </item>
+            <item>
+             <widget class="QPushButton" name="searchPushButton">
+              <property name="text">
+               <string>搜索</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="exportStudentPushButton">
+              <property name="text">
+               <string>导出</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="loadStudentInformationPushButton">
+              <property name="text">
+               <string>导入学生信息</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="studentInformationPushButton">
+              <property name="text">
+               <string>保存</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QTableWidget" name="studentInformationTableWidget"/>
+          </item>
+         </layout>
+        </widget>
+        <widget class="QWidget" name="subjectManagePage">
+         <layout class="QVBoxLayout" name="verticalLayout_6">
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_4">
+            <item>
+             <widget class="QLabel" name="label_3">
+              <property name="text">
+               <string>学科管理</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="label_4">
+              <property name="text">
+               <string>教师面板</string>
+              </property>
+              <property name="alignment">
+               <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_5">
+            <item>
+             <widget class="QPushButton" name="addSubjectPushButton">
+              <property name="text">
+               <string>+新增学科</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="deleteSubjectPushButton">
+              <property name="text">
+               <string>-删除学科</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="horizontalSpacer_2">
+              <property name="orientation">
+               <enum>Qt::Orientation::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QScrollArea" name="subjectMangeScrollArea">
+            <property name="widgetResizable">
+             <bool>true</bool>
+            </property>
+            <widget class="QWidget" name="subjectManageScrollAreaWidgetContents">
+             <property name="geometry">
+              <rect>
+               <x>0</x>
+               <y>0</y>
+               <width>760</width>
+               <height>440</height>
+              </rect>
+             </property>
+            </widget>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+        <widget class="QWidget" name="addSubjectPage">
+         <layout class="QVBoxLayout" name="verticalLayout_8" stretch="0,0">
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_6">
+            <item>
+             <widget class="QLabel" name="label_5">
+              <property name="text">
+               <string>增加学科</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="horizontalSpacer_3">
+              <property name="orientation">
+               <enum>Qt::Orientation::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QPushButton" name="addSubjectReturnSubjectManagePushButton">
+              <property name="text">
+               <string>返回</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_9" stretch="9,1">
+            <item>
+             <widget class="QTableWidget" name="addSubjectTableWidget">
+              <column>
+               <property name="text">
+                <string>单元</string>
+               </property>
+              </column>
+              <column>
+               <property name="text">
+                <string>权重</string>
+               </property>
+              </column>
+              <column>
+               <property name="text">
+                <string>满分</string>
+               </property>
+              </column>
+             </widget>
+            </item>
+            <item>
+             <layout class="QVBoxLayout" name="verticalLayout_9">
+              <item>
+               <widget class="QLabel" name="label_6">
+                <property name="text">
+                 <string>基本信息</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="addSubjectUintLinePushButton">
+                <property name="text">
+                 <string>添加单元行</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_10">
+                <item>
+                 <widget class="QLabel" name="serialNumberLabel">
+                  <property name="text">
+                   <string>学科编号</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QLineEdit" name="addSubjectIdLineEdit"/>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_7">
+                <item>
+                 <widget class="QLabel" name="label_8">
+                  <property name="text">
+                   <string>学科名称:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QLineEdit" name="addSubjectNameLineEdit"/>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_8">
+                <item>
+                 <widget class="QLabel" name="label_7">
+                  <property name="text">
+                   <string> 权重总和:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QLineEdit" name="addSubjectWeightLineEdit"/>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <widget class="QPushButton" name="addSubjectDeleteSelectedLinePushButton">
+                <property name="text">
+                 <string>删除选中行</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="addSubjectCompletedAndExitPushButton">
+                <property name="text">
+                 <string>完成并退出</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="addSubjectAdjustedWeightPushButton">
+                <property name="text">
+                 <string>按比例重整权重（请不要有0）</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="verticalSpacer">
+                <property name="orientation">
+                 <enum>Qt::Orientation::Vertical</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>20</width>
+                  <height>40</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </widget>
+      </item>
+     </layout>
+    </item>
+   </layout>
+  </widget>
+  <action name="subjectElectronic">
+   <property name="text">
+    <string>电子技术基础</string>
+   </property>
+  </action>
+  <action name="subjectLearning">
+   <property name="text">
+    <string>学科教学设计</string>
+   </property>
+  </action>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>QChartView</class>
+   <extends>QWidget</extends>
+   <header location="global">qchartview.h</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>
