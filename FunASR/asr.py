@@ -3,6 +3,7 @@
 
 import os
 import sys
+import re
 import tempfile
 import ffmpeg
 from funasr import AutoModel
@@ -29,12 +30,32 @@ def extract_audio(video_path: str, audio_path: str) -> bool:
         return False
 
 
+def remove_punctuation(text: str) -> str:
+    """
+    去掉中英文标点
+    保留中文 英文 数字 空格
+    """
+    if not isinstance(text, str):
+        return ""
+
+    text = re.sub(
+        r"[，。！？、；：“”‘’（）《》【】『』「」…—,.!?;:\"'()\[\]{}<>/\\|`~@#$%^&*_+=-]",
+        "",
+        text
+    )
+
+    text = re.sub(r"\s+", " ", text)
+
+    return text.strip()
+
+
 def format_timestamp(time_value) -> str:
     try:
         t = float(time_value)
     except Exception:
         t = 0.0
 
+    # FunASR 有时返回毫秒
     if t > 10000:
         t = t / 1000.0
 
@@ -74,7 +95,9 @@ def parse_asr_result(res):
             if start is None or end is None:
                 continue
 
-            if not isinstance(text, str) or not text.strip():
+            clean_text = remove_punctuation(text)
+
+            if not clean_text:
                 continue
 
             try:
@@ -83,7 +106,7 @@ def parse_asr_result(res):
             except Exception:
                 continue
 
-            subtitles.append((start, end, text.strip()))
+            subtitles.append((start, end, clean_text))
 
         return subtitles
 
@@ -103,7 +126,9 @@ def parse_asr_result(res):
             else:
                 continue
 
-            if not isinstance(sentence, str) or not sentence.strip():
+            clean_text = remove_punctuation(sentence)
+
+            if not clean_text:
                 continue
 
             try:
@@ -112,7 +137,7 @@ def parse_asr_result(res):
             except Exception:
                 continue
 
-            subtitles.append((start, end, sentence.strip()))
+            subtitles.append((start, end, clean_text))
 
         return subtitles
 
@@ -193,51 +218,40 @@ def overlay_subtitles(video_path: str, srt_path: str, output_path: str) -> bool:
         return False
 
 
-def process_video(video_input: str, video_output: str) -> bool:
-    if not os.path.isfile(video_input):
-        print(f"input file not found: {video_input}", file=sys.stderr)
-        return False
+def main():
+    if len(sys.argv) < 3:
+        print("usage:")
+        print(f"  {sys.argv[0]} input_video output_video")
+        print()
+        print("example:")
+        print(f"  {sys.argv[0]} input.mp4 output.mp4")
+        sys.exit(1)
 
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_audio:
-        audio_path = tmp_audio.name
-
-    with tempfile.NamedTemporaryFile(suffix=".srt", delete=False) as tmp_srt:
-        srt_path = tmp_srt.name
-
-    try:
-        if not extract_audio(video_input, audio_path):
-            return False
-
-        if not generate_srt(audio_path, srt_path):
-            return False
-
-        if not overlay_subtitles(video_input, srt_path, video_output):
-            return False
-
-        return True
-
-    finally:
-        for path in (audio_path, srt_path):
-            if os.path.exists(path):
-                os.unlink(path)
-
-
-def main() -> int:
-    if len(sys.argv) != 3:
-        print("usage: python asr.py input.mp4 output.mp4", file=sys.stderr)
-        return 1
-
-    input_path = sys.argv[1]
+    video_path = sys.argv[1]
     output_path = sys.argv[2]
 
-    ok = process_video(input_path, output_path)
+    if not os.path.exists(video_path):
+        print(f"video not found: {video_path}", file=sys.stderr)
+        sys.exit(1)
 
-    if ok:
-        print(output_path)
-        return 0
+    with tempfile.TemporaryDirectory() as temp_dir:
+        audio_path = os.path.join(temp_dir, "audio.wav")
+        srt_path = os.path.join(temp_dir, "subtitle.srt")
 
-    return 1
+        print("extract audio...")
+        if not extract_audio(video_path, audio_path):
+            sys.exit(1)
+
+        print("generate subtitle...")
+        if not generate_srt(audio_path, srt_path):
+            sys.exit(1)
+
+        print("overlay subtitle...")
+        if not overlay_subtitles(video_path, srt_path, output_path):
+            sys.exit(1)
+
+    print(f"done: {output_path}")
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
