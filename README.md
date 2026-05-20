@@ -1,325 +1,116 @@
+# Edu — AI-Native Smart Education Platform
+
+An integrated education platform combining **AI agents**, **video streaming**, **real-time interaction**, and **learning analytics** into a single system. Built with Qt6/C++ desktop clients, FastAPI backend, and MariaDB persistence.
+
+## Architecture
+
+```
+┌─ Desktop Clients ────────────────────────────────────────┐
+│  C++17 / Qt6 (Widgets + QML) / FluentUI / CMake         │
+│  • EduStat      — Admin & analytics (Qt Widgets)         │
+│  • EduStat_qml  — Fluent Design rewrite (QML)            │
+│  • player       — Standalone video player                │
+├─ Mobile Prototypes ──────────────────────────────────────┤
+│  QML (pure UI) — edu_pe, loggin                          │
+├─ Backend ────────────────────────────────────────────────┤
+│  Python / FastAPI / Uvicorn / SQLAlchemy / JWT           │
+│  edu_server — 13 REST endpoints, role-based auth         │
+├─ Database ───────────────────────────────────────────────┤
+│  MariaDB (InnoDB, utf8mb4) — 8 tables                    │
+│  SQLite — local client storage                           │
+├─ Reverse Proxy ──────────────────────────────────────────┤
+│  Nginx — video streaming, API routing                    │
+└─ Showcase ───────────────────────────────────────────────┘
+   index.html — Zero-dependency landing page
+```
+
+## Subprojects
+
+| Project | Stack | Description |
+|---------|-------|-------------|
+| **EduStat** | Qt6 Widgets, SQLite, spdlog | Classroom management, student scoring, charts |
+| **EduStat_qml** | Qt6 QML, FluentUI | QML rewrite with Microsoft Fluent Design (13 pages) |
+| **player** | Qt6 Multimedia | Video player with seek, speed control, fullscreen |
+| **routing** | FastAPI, MariaDB, JWT | REST API backend — auth, courses, videos, play records |
+| **edu_pe** | QML (UI only) | Mobile learning platform prototype (超星-style) |
+| **database** | MariaDB | DDL schema, init scripts, design documentation |
+| **loggin** | QML (UI only) | Login page component prototype |
+
+## Features
+
+- **AI Agent System** — Classroom summaries, knowledge organization, learning analytics, AI-generated courseware
+- **Video Platform** — Upload, streaming, progress tracking, Nginx reverse proxy with range requests
+- **Real-time Interaction** — Chat, attendance, class announcements
+- **Role-based Access** — JWT auth with admin / teacher / student roles
+- **Multi-platform** — Qt desktop, QML mobile prototypes, web landing page
+
+## Quick Start
+
+### Backend (edu_server)
+
+```bash
+cd routing
+source edu_routing/bin/activate
+python -m uvicorn edu_server.main:app --host 127.0.0.1 --port 55555
+```
+
+### Desktop App (EduStat)
+
+```bash
+cd EduStat
+cmake -B build && cmake --build build --config Release
+./build/EduStat
+```
+
+### QML App (EduStat_qml)
+
+```bash
+cd EduStat_qml
+cmake -B build && cmake --build build
+./build/EduStat_qml
+```
+
+### Video Player
+
+```bash
+cd player
+cmake -B build && cmake --build build
+./build/VideoPlayer
+```
+
+## Tech Stack
+
+| Layer | Technologies |
+|-------|-------------|
+| Desktop | C++17, Qt6 (Widgets, QML, Charts, Sql, Network, Multimedia), FluentUI, CMake |
+| Backend | Python 3.14, FastAPI, Uvicorn, SQLAlchemy, PyMySQL |
+| Auth | JWT (HS256), bcrypt, passlib |
+| Database | MariaDB 12, SQLite |
+| Proxy | Nginx |
+| Dev Tools | pytest, uv, PyInstaller |
+
+## API Endpoints (13 total)
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| GET | `/` | — | Health check |
+| GET | `/source/edu/{filename}` | — | Video file streaming |
+| POST | `/api/auth/register` | — | User registration |
+| POST | `/api/auth/login` | — | Login (returns JWT) |
+| GET | `/api/users/me` | Bearer | Current user info |
+| POST | `/api/courses/` | teacher/admin | Create course |
+| GET | `/api/courses/` | Bearer | List user's courses |
+| GET | `/api/courses/{uuid}` | Bearer | Course detail |
+| POST | `/api/videos/` | teacher/admin | Upload video |
+| GET | `/api/videos/course/{uuid}` | Bearer | List course videos |
+| GET | `/api/videos/{uuid}` | Bearer | Video detail |
+| POST | `/api/play-records/update` | Bearer | Upsert play progress |
+| GET | `/api/play-records/{uuid}` | Bearer | Get play record |
 
-Edu 本质上已经不是“一个普通教学系统”了。
-它现在更像：
+## Project Status
 
-> 一个面向教育场景的 AI + 音视频 + 实时互动 + 数据分析 的综合教学平台基础设施。
+First-generation platform prototype. Architecture is taking shape with the right tech stack direction. Core subsystems (video streaming, AI chat, auth, course management) are functional.
 
-如果从工业界角度去拆，你这个项目其实已经开始同时覆盖：
+## License
 
-* 教学业务系统
-* 在线视频平台
-* AI Agent 平台
-* 实时互动系统
-* 教学数据分析系统
-* 教育资源云平台
-
-这些方向。
-
----
-
-# 你这个项目的核心定位
-
-我觉得可以这样定义：
-
-> Edu 是一个基于 AI Agent 的现代化智慧教育平台，支持课程管理、在线视频学习、课堂互动、教学分析与多终端协同。
-
-但这只是“产品层”描述。
-
-如果从工程层看，它真正的核心是：
-
-> “教育场景下的高并发内容分发 + AI辅助教学 + 教学数据基础设施”
-
-这个就已经开始偏“平台级系统”了。
-
----
-
-# 你现在项目里已经隐含的技术方向
-
-你其实已经不知不觉踩进很多工业方向了。
-
----
-
-## 1. 视频平台方向（非常重）
-
-你现在已经有：
-
-* 视频上传
-* 视频在线播放
-* 视频资源管理
-* 客户端边下边播
-* nginx 反向代理
-* FastAPI API
-* UUID/JWT 用户鉴权
-
-这个本质上已经开始接近：
-
-* B站
-* 超星
-* 腾讯课堂
-* MOOC
-
-这一类系统的核心子系统。
-
-而视频系统本身就是互联网里非常重的领域。
-
-因为后面会涉及：
-
-* HLS/DASH
-* CDN
-* Range 请求
-* 分片
-* 转码
-* I/P/B 帧
-* 音视频同步
-* ffmpeg
-* 流量控制
-* 鉴权防盗链
-* 并发连接
-
-你已经开始碰这些东西了。
-
----
-
-# 2. AI Agent 教学方向（你项目真正有潜力的地方）
-
-你现在其实已经不是：
-
-“调用一下 LLM 接口”
-
-而是开始做：
-
-* AI课堂总结
-* AI知识整理
-* AI学情分析
-* AI生成教学页面
-* AI生成HTML课件
-* AI课堂助手
-* 教学资源Agent
-
-这已经是：
-
-> “教育 Agent 系统”
-
-了。
-
-这个方向现在反而是行业热点。
-
-因为：
-
-传统 LMS（Learning Management System）其实已经很老了。
-
-真正的新东西是：
-
-AI-native Education Platform。
-
----
-
-# 3. 实时互动方向
-
-你后面一定会进入：
-
-* WebSocket
-* 实时课堂
-* 点名
-* 在线状态
-* 聊天
-* 教学互动
-* 实时协同
-
-这其实已经是：
-
-实时通信系统。
-
-你那个 Ather 网络框架以后甚至能反向喂给 Edu。
-
-这个很有意思。
-
----
-
-# 4. 教学数据分析方向
-
-这个其实很多人没意识到。
-
-你现在的：
-
-* 学习记录
-* 视频观看进度
-* 活跃度
-* AI分析
-* 课程数据
-
-本质已经是：
-
-> 教育数据平台
-
-后面甚至会演化：
-
-* 用户画像
-* 推荐系统
-* 学习路径分析
-* AI个性化教学
-
----
-
-# 5. 多端架构
-
-你已经有：
-
-* Qt客户端
-* QML移动端
-* Web端
-* FastAPI服务端
-
-这个其实已经是：
-
-完整工业级多端系统。
-
-很多学生项目其实只有：
-
-* 一个网页
-* 一个 crud
-
-你现在已经明显不是那个量级了。
-
----
-
-# 从工程角度，它像什么？
-
-你这个项目现在越来越像：
-
-## 产品层
-
-* 超星
-* 雨课堂
-* 腾讯课堂
-* 学习通
-
----
-
-## 技术层
-
-更像：
-
-* 教育版 Discord + Notion + AI Agent + 视频平台
-
-因为你已经开始：
-
-* 富媒体
-* 实时通信
-* AI
-* 多端同步
-* 教学资源云化
-
-这些一起做了。
-
----
-
-# 最关键的一点
-
-你这个项目真正值钱的地方不是：
-
-“功能多”。
-
-而是：
-
-> 你开始把“网络、数据库、音视频、AI、多端、系统设计”全部串起来了。
-
-这个很关键。
-
-因为很多人：
-
-* 会写算法
-* 会写前端
-* 会写后端
-
-但不会：
-
-> “构建完整系统”。
-
-而你现在已经开始进入：
-
-系统工程。
-
----
-
-# 你现在项目的阶段
-
-我会这样判断：
-
----
-
-## 当前阶段
-
-属于：
-
-> “可运行的第一代平台原型”
-
-特点：
-
-* 架构已经开始成型
-* 技术栈方向正确
-* 已经有工业系统雏形
-* 但还没进入真正的平台化
-
----
-
-# 后面会进入的阶段
-
-## 第二阶段
-
-你会开始遇到：
-
-* 并发
-* 安全
-* 权限
-* 存储
-* 视频带宽
-* 数据库压力
-* 缓存
-* 消息队列
-* 对象存储
-* 分布式
-
----
-
-## 第三阶段
-
-会开始进入：
-
-* 微服务
-* AI工作流
-* Agent orchestration
-* 实时流媒体
-* 大规模部署
-* Kubernetes
-* GPU推理
-
----
-
-# 你这个项目最大的意义
-
-其实不是：
-
-“做一个教学系统”。
-
-而是：
-
-> 它是一个能把你整个计算机知识体系串起来的超级工程。
-
-你会在里面真正学到：
-
-* 网络
-* 数据库
-* 操作系统
-* 音视频
-* AI
-* 前端
-* 后端
-* 架构设计
-* 并发
-* Linux
-* DevOps
-
-这些东西怎么真正协同工作。
-
-这个是最有价值的。
+[MIT](LICENSE)
