@@ -20,7 +20,8 @@ edu_server/
 │   ├── scores.py        成绩管理
 │   ├── videos.py        视频管理 + 流媒体
 │   ├── play_records.py  播放进度
-│   └── files.py         文件上传
+│   ├── files.py         文件上传
+│   └── ai.py            AI 助手代理（DeepSeek key 仅在服务器）
 ├── services/            业务逻辑层
 ├── tests/               测试
 └── README.md
@@ -55,6 +56,34 @@ uvicorn main:app --host 127.0.0.1 --port 55555 --reload
 启动后访问:
 - API 文档: http://127.0.0.1:55555/docs
 - OpenAPI: http://127.0.0.1:55555/openapi.json
+
+## AI 助手代理
+
+客户端调用本服务，不直接持有 DeepSeek API key:
+
+```http
+POST /api/ai/chat
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+请求体:
+```json
+{
+  "messages": [
+    {"role": "user", "content": "帮我总结这节课"}
+  ]
+}
+```
+
+服务器环境变量:
+```bash
+export ANTHROPIC_AUTH_TOKEN="sk-..."
+export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
+export ANTHROPIC_MODEL="deepseek-v4-pro"
+```
+
+真实 key 只放服务器环境或服务器 `.env`，不要提交到 public 仓库。
 
 ## 数据库
 

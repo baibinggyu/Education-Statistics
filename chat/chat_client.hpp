@@ -41,6 +41,8 @@ public:
     void setTimeout(int ms) { timeout_ms_ = ms; }
     int  timeout() const { return timeout_ms_; }
     const std::string& model() const { return config_.model; }
+    bool hasApiKey() const { return !config_.api_key.empty(); }
+    std::size_t apiKeyLength() const { return config_.api_key.size(); }
 
     /// 发送消息列表，返回结构化结果。
     ChatResponse chat(const std::vector<Message>& messages);

@@ -6,6 +6,7 @@ import EduStat.Backend 1.0
 
 Item {
     id: root
+    property string activeSessionId: ""
 
     // ---- ChatBackend (from C++) ----
     ChatBackend {
@@ -16,13 +17,32 @@ Item {
         }
         onErrorOccurred: function(msg) {
             msgModel.append({role: "system", content: "[错误] " + msg})
+            scrollToBottom()
         }
-        onCompressed: {
-            // 重建消息列表以匹配压缩后的 history
+        onCompressed: function(summary) {
+            msgModel.append({role: "system", content: summary})
+            scrollToBottom()
+        }
+        onConversationReset: {
             msgModel.clear()
-            // 压缩后 ChatBackend 内部 history 已更新，但 QML 侧不知道具体内容
-            // 简单处理：加一条提示消息
-            msgModel.append({role: "system", content: "[对话已压缩，早期内容已总结]"})
+        }
+        onSessionListReset: {
+            sessionModel.clear()
+        }
+        onSessionListed: function(id, title, preview, updatedAt, active) {
+            sessionModel.append({
+                sessionId: id,
+                title: title,
+                preview: preview,
+                updatedAt: updatedAt,
+                active: active
+            })
+        }
+        onSessionSelected: function(id) {
+            root.activeSessionId = id
+        }
+        onHistoryLoaded: function(role, content) {
+            msgModel.append({role: role, content: content})
         }
     }
 
@@ -31,8 +51,121 @@ Item {
         id: msgModel
     }
 
-    ColumnLayout {
+    ListModel {
+        id: sessionModel
+    }
+
+    Component.onCompleted: chat.newConversation()
+
+    RowLayout {
         anchors.fill: parent
+        spacing: 0
+
+        Rectangle {
+            Layout.preferredWidth: 250
+            Layout.fillHeight: true
+            color: Qt.rgba(25/255, 28/255, 33/255, 1)
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                spacing: 10
+
+                FluFilledButton {
+                    Layout.fillWidth: true
+                    text: "新对话"
+                    enabled: !chat.loading
+                    onClicked: chat.newConversation()
+                }
+
+                FluText {
+                    text: "历史对话"
+                    font.pixelSize: 12
+                    font.bold: true
+                    textColor: "#d7e1e8"
+                    Layout.topMargin: 4
+                }
+
+                ListView {
+                    id: sessionList
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    spacing: 6
+                    model: sessionModel
+
+                    delegate: Rectangle {
+                        required property string sessionId
+                        required property string title
+                        required property string preview
+                        required property bool active
+
+                        width: sessionList.width
+                        height: 68
+                        radius: 8
+                        color: active ? "#0f766e" :
+                               sessionMouse.containsMouse ? Qt.rgba(43/255, 50/255, 56/255, 1) :
+                               "transparent"
+
+                        MouseArea {
+                            id: sessionMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: chat.loadConversation(sessionId)
+                        }
+
+                        Column {
+                            anchors.left: parent.left
+                            anchors.right: deleteBtn.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 10
+                            anchors.rightMargin: 6
+                            spacing: 4
+
+                            FluText {
+                                width: parent.width
+                                text: title
+                                font.pixelSize: 12
+                                font.bold: active
+                                textColor: active ? "#ffffff" : "#dbe6ed"
+                                elide: Text.ElideRight
+                            }
+
+                            FluText {
+                                width: parent.width
+                                text: preview.length > 0 ? preview : "暂无回复"
+                                font.pixelSize: 10
+                                textColor: active ? "#d4f5ee" : "#84939f"
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        FluButton {
+                            id: deleteBtn
+                            anchors.right: parent.right
+                            anchors.rightMargin: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 30
+                            height: 30
+                            text: "×"
+                            visible: sessionMouse.containsMouse || active
+                            onClicked: chat.deleteConversation(sessionId)
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            width: 1
+            Layout.fillHeight: true
+            color: Qt.rgba(49/255, 56/255, 64/255, 1)
+        }
+
+        ColumnLayout {
+        Layout.fillWidth: true
+        Layout.fillHeight: true
         spacing: 0
 
         // ---- 顶栏 ----
@@ -68,9 +201,9 @@ Item {
                 }
                 FluButton {
                     text: "清空"
+                    enabled: activeSessionId.length > 0 && !chat.loading
                     onClicked: {
                         chat.clearHistory()
-                        msgModel.clear()
                     }
                 }
             }
@@ -84,101 +217,89 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            ScrollBar.vertical: FluScrollBar {}
+            ScrollBar.vertical: FluScrollBar { id: vbar }
 
             ColumnLayout {
                 id: msgColumn
                 width: scrollView.availableWidth
                 spacing: 12
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.margins: 16
 
                 // 欢迎语
-                FluText {
+                ColumnLayout {
                     Layout.fillWidth: true
-                    text: "你好！我是 " + chat.modelName + "，有什么可以帮你的？"
-                    font.pixelSize: 12
-                    textColor: "#53636d"
-                    horizontalAlignment: Text.AlignHCenter
-                    visible: msgModel.count === 0
+                    visible: msgModel.count === 0 && !chat.loading
+                    spacing: 10
+
+                    Item { Layout.fillWidth: true; implicitHeight: 80 }
+
+                    FluText {
+                        Layout.fillWidth: true
+                        text: "开始新对话"
+                        font.pixelSize: 30
+                        font.bold: true
+                        textColor: "#edf6f4"
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+
+                    FluText {
+                        Layout.fillWidth: true
+                        text: "我是 " + chat.modelName + "，输入问题后会自动保存到左侧历史。"
+                        font.pixelSize: 13
+                        textColor: "#8ea1ad"
+                        horizontalAlignment: Text.AlignHCenter
+                    }
                 }
 
                 Repeater {
                     model: msgModel
+
                     delegate: Item {
+                        id: delegateItem
                         Layout.fillWidth: true
-                        implicitHeight: bubbleCol.implicitHeight + 4
+                        implicitHeight: bubbleFrame.implicitHeight + 8
 
-                        ColumnLayout {
-                            id: bubbleCol
-                            width: parent.width
-                            spacing: 4
+                        FluFrame {
+                            id: bubbleFrame
+                            anchors.right: role === "user" ? parent.right : undefined
+                            anchors.left: role !== "user" ? parent.left : undefined
+                            anchors.margins: 16
+                            width: Math.min(msgColumn.width * 0.78,
+                                            msgColumn.width - 32)
+                            radius: 12
+                            padding: 12
+                            color: role === "user" ? "#0f766e" :
+                                   role === "system" ? Qt.rgba(40/255, 25/255, 25/255, 1) :
+                                   Qt.rgba(30/255, 34/255, 40/255, 1)
 
-                            // 角色标签
-                            FluText {
-                                text: role === "user" ? "你" :
-                                      role === "assistant" ? "AI" : "系统"
-                                font.pixelSize: 10
-                                textColor: role === "user" ? "#0f766e" :
-                                            role === "system" ? "#ef4444" : "#8ea1ad"
-                                Layout.leftMargin: role === "user" ? 0 : 16
-                                Layout.alignment: role === "user" ?
-                                    Qt.AlignRight : Qt.AlignLeft
-                            }
-
-                            // 消息气泡
-                            FluFrame {
-                                Layout.preferredWidth: Math.min(
-                                    implicitWidth, msgColumn.width * 0.78)
-                                Layout.maximumWidth: msgColumn.width - 32
-                                Layout.alignment: role === "user" ?
-                                    Qt.AlignRight : Qt.AlignLeft
-                                radius: 12
-                                padding: 12
-                                color: role === "user" ? "#0f766e" :
-                                       role === "system" ? Qt.rgba(40/255, 25/255, 25/255, 1) :
-                                       Qt.rgba(30/255, 34/255, 40/255, 1)
-
-                                TextArea {
-                                    anchors.fill: parent
-                                    text: content
-                                    font.pixelSize: 12
-                                    color: role === "user" ? "#ffffff" :
-                                               role === "system" ? "#ef4444" : "#e0e0e0"
-                                    wrapMode: TextArea.WordWrap
-                                    readOnly: true
-                                    selectByMouse: true
-                                    background: null
-                                    padding: 0
-                                    topPadding: 0
-                                    bottomPadding: 0
-                                    leftPadding: 0
-                                    rightPadding: 0
-                                }
+                            TextEdit {
+                                id: textContent
+                                width: parent.width - 24
+                                text: content
+                                textFormat: role === "assistant"
+                                            ? TextEdit.MarkdownText
+                                            : TextEdit.PlainText
+                                font.pixelSize: 12
+                                color: role === "user" ? "#ffffff" :
+                                       role === "system" ? "#ef4444" : "#e0e0e0"
+                                wrapMode: TextEdit.WordWrap
+                                readOnly: true
+                                selectByMouse: true
+                                padding: 0
                             }
                         }
                     }
                 }
 
-                // 加载动画
-                Item {
-                    Layout.fillWidth: true
-                    implicitHeight: loadingRow.visible ? 24 : 0
-                    RowLayout {
-                        id: loadingRow
-                        visible: chat.loading
-                        anchors.left: parent.left
-                        anchors.leftMargin: 16
-                        spacing: 8
-                        FluText {
-                            text: "思考中..."
-                            font.pixelSize: 12
-                            textColor: "#8ea1ad"
-                        }
-                    }
+                // 加载指示器
+                FluText {
+                    Layout.leftMargin: 16
+                    text: "思考中..."
+                    font.pixelSize: 12
+                    textColor: "#8ea1ad"
+                    visible: chat.loading
                 }
+
+                Item { Layout.fillWidth: true; implicitHeight: 8; visible: msgModel.count > 0 }
             }
         }
 
@@ -192,6 +313,8 @@ Item {
                 anchors.fill: parent
                 spacing: 12
 
+                // Enter 发送 / Shift+Enter 换行
+                // Qt 6 中 Keys.onReturnPressed 在 FluMultilineTextBox 之前触发
                 FluMultilineTextBox {
                     id: inputBox
                     Layout.fillWidth: true
@@ -199,9 +322,8 @@ Item {
                     placeholderText: "输入消息... (Enter 发送, Shift+Enter 换行)"
                     enabled: !chat.loading
 
-                    Keys.onPressed: function(event) {
-                        if (event.key === Qt.Key_Return &&
-                            !(event.modifiers & Qt.ShiftModifier)) {
+                    Keys.onReturnPressed: function(event) {
+                        if (!(event.modifiers & Qt.ShiftModifier)) {
                             event.accepted = true
                             sendBtn.clicked()
                         }
@@ -225,10 +347,20 @@ Item {
             }
         }
     }
+    }
 
-    // 辅助：滚动到底部
+    // ---- 辅助: 滚动到底部 ----
+    Timer {
+        id: scrollTimer
+        interval: 30
+        repeat: false
+        onTriggered: {
+            if (vbar.size < 1.0)
+                vbar.position = 1.0 - vbar.size
+        }
+    }
+
     function scrollToBottom() {
-        if (scrollView.ScrollBar.vertical)
-            scrollView.ScrollBar.vertical.position = 1.0 - scrollView.ScrollBar.vertical.size
+        scrollTimer.start()
     }
 }

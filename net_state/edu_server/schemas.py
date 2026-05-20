@@ -25,6 +25,24 @@ class TokenOut(BaseModel):
 
 
 # ============================================================
+# AI
+# ============================================================
+
+class AIMessage(BaseModel):
+    role: str = Field(pattern="^(system|user|assistant)$")
+    content: str = Field(min_length=1, max_length=8000)
+
+
+class AIChatRequest(BaseModel):
+    messages: list[AIMessage] = Field(min_length=1, max_length=40)
+
+
+class AIChatResponse(BaseModel):
+    content: str
+    model: str
+
+
+# ============================================================
 # User
 # ============================================================
 

@@ -20,8 +20,9 @@ app = FastAPI(
 )
 
 # 路由注册
-from routers import auth, courses, files, play_records, scores, users, videos
+from routers import ai, auth, courses, files, play_records, scores, users, videos
 
+app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(courses.router, prefix="/api/courses", tags=["courses"])

@@ -6,7 +6,7 @@
 #include "config.hpp"
 
 int main() {
-    Config config = Config::from_env();
+    Config config = Config::from_default_locations();
     if (config.api_key.empty()) {
         std::cerr << "[Fatal] 环境变量 ANTHROPIC_AUTH_TOKEN 未设置\n";
         return 1;
