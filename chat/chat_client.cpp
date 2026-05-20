@@ -128,6 +128,10 @@ ChatResponse ChatClient::chat(const std::vector<Message>& messages) {
         resp.error = "JSON 解析失败: " + jec.message();
         return resp;
     }
+    if (!jv.is_object()) {
+        resp.error = "响应不是 JSON 对象: " + resp_body;
+        return resp;
+    }
     auto obj = jv.as_object();
 
     // 辅助：安全提取字符串字段
@@ -149,7 +153,7 @@ ChatResponse ChatClient::chat(const std::vector<Message>& messages) {
                 if (err.is_object() && err.as_object().find("message") != err.as_object().end())
                     resp.error = safe_str(err.as_object().at("message"));
                 else if (err.is_string())
-                    resp.error = json::value_to<std::string>(err);
+                    resp.error = safe_str(err);
                 else
                     resp.error = json::serialize(err);
             } catch (...) {
@@ -161,28 +165,52 @@ ChatResponse ChatClient::chat(const std::vector<Message>& messages) {
         return resp;
     }
 
-    // 提取 content[0].text
+    // 提取 content[].text (Anthropic 格式，可能混有 thinking 块)
     try {
         auto it = obj.find("content");
         if (it != obj.end() && it->value().is_array()) {
-            auto content_arr = it->value().as_array();
-            if (!content_arr.empty()) {
-                auto& first = content_arr[0];
-                if (first.is_object()) {
-                    auto& fobj = first.as_object();
-                    auto type_it = fobj.find("type");
-                    std::string type = (type_it != fobj.end()) ? safe_str(type_it->value()) : "";
-                    if (type == "text" || type.empty()) {
-                        auto text_it = fobj.find("text");
-                        if (text_it != fobj.end())
-                            resp.content = safe_str(text_it->value());
+            for (auto& item : it->value().as_array()) {
+                if (!item.is_object()) continue;
+                auto& fobj = item.as_object();
+                auto type_it = fobj.find("type");
+                if (type_it == fobj.end()) continue;
+                if (type_it->value().is_string() &&
+                    json::value_to<std::string>(type_it->value()) == "text") {
+                    auto text_it = fobj.find("text");
+                    if (text_it != fobj.end()) {
+                        resp.content = safe_str(text_it->value());
+                        break;
                     }
-                    // type == "tool_use" 等暂不处理
                 }
             }
         }
-    } catch (...) {
-        resp.error = "解析 content 字段失败";
+    } catch (...) {}
+
+    // 回退: OpenAI 兼容格式 (choices[0].message.content)
+    if (resp.content.empty()) {
+        try {
+            auto choices_it = obj.find("choices");
+            if (choices_it != obj.end() && choices_it->value().is_array()) {
+                auto& choices = choices_it->value().as_array();
+                if (!choices.empty()) {
+                    auto& first = choices[0];
+                    if (first.is_object()) {
+                        auto msg_it = first.as_object().find("message");
+                        if (msg_it != first.as_object().end() && msg_it->value().is_object()) {
+                            auto content_it = msg_it->value().as_object().find("content");
+                            if (content_it != msg_it->value().as_object().end())
+                                resp.content = safe_str(content_it->value());
+                        }
+                    }
+                }
+            }
+        } catch (...) {}
+    }
+
+    // 两个格式都失败 → 把原始响应当 error 返回，方便排查
+    if (resp.content.empty()) {
+        resp.ok = false;
+        resp.error = "无法解析响应内容，原始响应: " + resp_body;
         return resp;
     }
 
@@ -194,9 +222,13 @@ ChatResponse ChatClient::chat(const std::vector<Message>& messages) {
     // usage (可选)
     auto usage_it = obj.find("usage");
     if (usage_it != obj.end() && usage_it->value().is_object()) {
-        auto& u = usage_it->value().as_object();
-        resp.input_tokens  = static_cast<int>(json::value_to<int64_t>(u.at("input_tokens")));
-        resp.output_tokens = static_cast<int>(json::value_to<int64_t>(u.at("output_tokens")));
+        try {
+            auto& u = usage_it->value().as_object();
+            resp.input_tokens  = static_cast<int>(json::value_to<int64_t>(u.at("input_tokens")));
+            resp.output_tokens = static_cast<int>(json::value_to<int64_t>(u.at("output_tokens")));
+        } catch (...) {
+            // usage 字段格式异常，忽略
+        }
     }
     resp.ok = true;
 
