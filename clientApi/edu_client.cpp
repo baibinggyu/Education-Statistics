@@ -1,14 +1,14 @@
 #include "edu_client.hpp"
 
 #include <boost/json.hpp>
-#include <stdexcept>
 
 namespace json = boost::json;
 
-// ---------- JSON helpers ----------
+// ============================================================
+// JSON helpers
+// ============================================================
 namespace {
 
-// --- 构建 JSON ---
 json::object to_json(const UserCreate& d) {
     return {{"username", d.username}, {"password", d.password}, {"role", d.role}};
 }
@@ -40,174 +40,8 @@ json::object to_json(const VideoCreate& d) {
     if (d.cover_path)  obj["cover_path"]  = *d.cover_path;
     return obj;
 }
-json::object to_json(const PlayRecordUpdate& d) {
-    return {{"video_uuid", d.video_uuid}, {"progress", d.progress}, {"completed", d.completed}};
-}
 
-// --- 解析 JSON ---
-TokenOut from_json_token(const json::value& jv) {
-    auto& o = jv.as_object();
-    return {json::value_to<std::string>(o.at("access_token")),
-            json::value_to<std::string>(o.at("token_type"))};
-}
-UserOut from_json_user(const json::value& jv) {
-    auto& o = jv.as_object();
-    return {json::value_to<std::string>(o.at("uuid")),
-            json::value_to<std::string>(o.at("username")),
-            json::value_to<std::string>(o.at("role")),
-            json::value_to<std::string>(o.at("created_at"))};
-}
-StudentBriefOut from_json_student_brief(const json::value& jv) {
-    auto& o = jv.as_object();
-    return {json::value_to<std::string>(o.at("student_no")),
-            json::value_to<std::string>(o.at("real_name"))};
-}
-UserMeOut from_json_user_me(const json::value& jv) {
-    auto& o = jv.as_object();
-    UserMeOut u;
-    u.uuid     = json::value_to<std::string>(o.at("uuid"));
-    u.username = json::value_to<std::string>(o.at("username"));
-    u.role     = json::value_to<std::string>(o.at("role"));
-    u.created_at = json::value_to<std::string>(o.at("created_at"));
-    if (o.find("student") != o.end() && !o.at("student").is_null())
-        u.student = from_json_student_brief(o.at("student"));
-    return u;
-}
-TeacherBriefOut from_json_teacher(const json::value& jv) {
-    auto& o = jv.as_object();
-    return {json::value_to<std::string>(o.at("uuid")),
-            json::value_to<std::string>(o.at("username"))};
-}
-CourseMyOut from_json_course_my(const json::value& jv) {
-    auto& o = jv.as_object();
-    CourseMyOut c;
-    c.uuid       = json::value_to<std::string>(o.at("uuid"));
-    c.name       = json::value_to<std::string>(o.at("name"));
-    c.status     = json::value_to<std::string>(o.at("status"));
-    c.my_role    = json::value_to<std::string>(o.at("my_role"));
-    c.created_at = json::value_to<std::string>(o.at("created_at"));
-    c.member_count = static_cast<int>(o.at("member_count").as_int64());
-    c.video_count  = static_cast<int>(o.at("video_count").as_int64());
-    if (o.find("description") != o.end() && !o.at("description").is_null())
-        c.description = json::value_to<std::string>(o.at("description"));
-    if (o.find("teacher") != o.end() && !o.at("teacher").is_null())
-        c.teacher = from_json_teacher(o.at("teacher"));
-    return c;
-}
-CourseOut from_json_course(const json::value& jv) {
-    auto& o = jv.as_object();
-    CourseOut c;
-    c.uuid       = json::value_to<std::string>(o.at("uuid"));
-    c.name       = json::value_to<std::string>(o.at("name"));
-    c.status     = json::value_to<std::string>(o.at("status"));
-    c.created_at = json::value_to<std::string>(o.at("created_at"));
-    c.member_count = static_cast<int>(o.at("member_count").as_int64());
-    c.video_count  = static_cast<int>(o.at("video_count").as_int64());
-    if (o.find("description") != o.end() && !o.at("description").is_null())
-        c.description = json::value_to<std::string>(o.at("description"));
-    if (o.find("teacher") != o.end() && !o.at("teacher").is_null())
-        c.teacher = from_json_teacher(o.at("teacher"));
-    return c;
-}
-UnitOut from_json_unit(const json::value& jv) {
-    auto& o = jv.as_object();
-    return {static_cast<int>(o.at("id").as_int64()),
-            json::value_to<std::string>(o.at("name")),
-            o.at("weight").as_double(),
-            o.at("full_score").as_double(),
-            static_cast<int>(o.at("unit_order").as_int64()),
-            json::value_to<std::string>(o.at("created_at"))};
-}
-CourseDetailOut from_json_course_detail(const json::value& jv) {
-    auto& o = jv.as_object();
-    CourseDetailOut c;
-    c.uuid       = json::value_to<std::string>(o.at("uuid"));
-    c.name       = json::value_to<std::string>(o.at("name"));
-    c.status     = json::value_to<std::string>(o.at("status"));
-    c.created_at = json::value_to<std::string>(o.at("created_at"));
-    c.member_count = static_cast<int>(o.at("member_count").as_int64());
-    if (o.find("description") != o.end() && !o.at("description").is_null())
-        c.description = json::value_to<std::string>(o.at("description"));
-    if (o.find("teacher") != o.end() && !o.at("teacher").is_null())
-        c.teacher = from_json_teacher(o.at("teacher"));
-    for (auto& u : o.at("units").as_array())
-        c.units.push_back(from_json_unit(u));
-    return c;
-}
-ScoreSingleOut from_json_score(const json::value& jv) {
-    auto& o = jv.as_object();
-    ScoreSingleOut s;
-    s.student_uuid = json::value_to<std::string>(o.at("student_uuid"));
-    s.student_no   = json::value_to<std::string>(o.at("student_no"));
-    s.real_name    = json::value_to<std::string>(o.at("real_name"));
-    s.course_uuid  = json::value_to<std::string>(o.at("course_uuid"));
-    s.unit_id      = static_cast<int>(o.at("unit_id").as_int64());
-    s.unit_name    = json::value_to<std::string>(o.at("unit_name"));
-    s.score        = o.at("score").as_double();
-    s.updated_at   = json::value_to<std::string>(o.at("updated_at"));
-    return s;
-}
-PlayProgressOut from_json_progress(const json::value& jv) {
-    auto& o = jv.as_object();
-    return {static_cast<int>(o.at("progress").as_int64()),
-            o.at("completed").as_bool()};
-}
-VideoOut from_json_video(const json::value& jv) {
-    auto& o = jv.as_object();
-    VideoOut v;
-    v.uuid       = json::value_to<std::string>(o.at("uuid"));
-    v.title      = json::value_to<std::string>(o.at("title"));
-    v.course_uuid = json::value_to<std::string>(o.at("course_uuid"));
-    v.status     = json::value_to<std::string>(o.at("status"));
-    v.created_at = json::value_to<std::string>(o.at("created_at"));
-    v.duration   = static_cast<int>(o.at("duration").as_int64());
-    v.file_size  = static_cast<int>(o.at("file_size").as_int64());
-    v.has_cover  = o.at("has_cover").as_bool();
-    if (o.find("description") != o.end() && !o.at("description").is_null())
-        v.description = json::value_to<std::string>(o.at("description"));
-    if (o.find("course_name") != o.end() && !o.at("course_name").is_null())
-        v.course_name = json::value_to<std::string>(o.at("course_name"));
-    return v;
-}
-VideoDetailOut from_json_video_detail(const json::value& jv) {
-    auto& o = jv.as_object();
-    VideoDetailOut v;
-    v.uuid       = json::value_to<std::string>(o.at("uuid"));
-    v.title      = json::value_to<std::string>(o.at("title"));
-    v.course_uuid = json::value_to<std::string>(o.at("course_uuid"));
-    v.status     = json::value_to<std::string>(o.at("status"));
-    v.created_at = json::value_to<std::string>(o.at("created_at"));
-    v.duration   = static_cast<int>(o.at("duration").as_int64());
-    v.file_size  = static_cast<int>(o.at("file_size").as_int64());
-    if (o.find("description") != o.end() && !o.at("description").is_null())
-        v.description = json::value_to<std::string>(o.at("description"));
-    if (o.find("course_name") != o.end() && !o.at("course_name").is_null())
-        v.course_name = json::value_to<std::string>(o.at("course_name"));
-    if (o.find("uploader") != o.end() && !o.at("uploader").is_null())
-        v.uploader = from_json_teacher(o.at("uploader"));
-    if (o.find("cover_url") != o.end() && !o.at("cover_url").is_null())
-        v.cover_url = json::value_to<std::string>(o.at("cover_url"));
-    if (o.find("my_progress") != o.end() && !o.at("my_progress").is_null())
-        v.my_progress = from_json_progress(o.at("my_progress"));
-    return v;
-}
-ScoreDistributionOut from_json_distribution(const json::value& jv) {
-    auto& o = jv.as_object();
-    ScoreDistributionOut d;
-    d.total   = static_cast<int>(o.at("total").as_int64());
-    d.average = o.at("average").as_double();
-    d.median  = o.at("median").as_double();
-    d.passed  = static_cast<int>(o.at("passed").as_int64());
-    d.failed  = static_cast<int>(o.at("failed").as_int64());
-    for (auto& b : o.at("bands").as_array()) {
-        auto& bo = b.as_object();
-        d.bands.push_back({json::value_to<std::string>(bo.at("range")),
-                           static_cast<int>(bo.at("count").as_int64())});
-    }
-    return d;
-}
-
-} // anonymous namespace
+} // namespace
 
 // ============================================================
 // EduClient
@@ -216,115 +50,218 @@ ScoreDistributionOut from_json_distribution(const json::value& jv) {
 EduClient::EduClient(const EduServerConfig& cfg)
     : http_(cfg.host, cfg.port) {}
 
-// ---- Auth ----
-TokenOut EduClient::register_user(const UserCreate& data) {
-    auto resp = http_.post("/api/auth/register", to_json(data));
-    auto token = from_json_token(resp);
-    http_.set_token(token.access_token);
-    return token;
+// ---- Health ----
+HttpClient::Response EduClient::health() {
+    return http_.get("/");
 }
 
-TokenOut EduClient::login(const UserLogin& data) {
-    auto resp = http_.post("/api/auth/login", to_json(data));
-    auto token = from_json_token(resp);
-    http_.set_token(token.access_token);
-    return token;
+// ---- Auth ----
+HttpClient::Response EduClient::register_user(const UserCreate& data) {
+    return http_.post("/api/auth/register", to_json(data));
+}
+
+HttpClient::Response EduClient::login(const UserLogin& data) {
+    return http_.post("/api/auth/login", to_json(data));
 }
 
 // ---- Users ----
-UserMeOut EduClient::get_me() {
-    return from_json_user_me(http_.get("/api/users/me"));
+HttpClient::Response EduClient::get_me() {
+    return http_.get("/api/users/me");
 }
 
-UserOut EduClient::update_me(const std::string& new_username) {
+HttpClient::Response EduClient::update_me(const std::string& new_username) {
     json::object body;
     body["username"] = new_username;
-    return from_json_user(http_.put("/api/users/me", body));
+    return http_.patch("/api/users/me", body);
+}
+
+HttpClient::Response EduClient::bind_student(const std::string& student_no,
+                                              const std::string& real_name) {
+    json::object body;
+    body["student_no"] = student_no;
+    body["real_name"] = real_name;
+    return http_.post("/api/users/bind", body);
 }
 
 // ---- Courses ----
-std::vector<CourseMyOut> EduClient::list_my_courses() {
-    std::vector<CourseMyOut> ret;
-    auto jv = http_.get("/api/courses/my");
-    for (auto& item : jv.as_array())
-        ret.push_back(from_json_course_my(item));
-    return ret;
+HttpClient::Response EduClient::create_course(const CourseCreate& data) {
+    return http_.post("/api/courses/", to_json(data));
 }
 
-CourseDetailOut EduClient::get_course(const std::string& course_uuid) {
-    return from_json_course_detail(
-        http_.get("/api/courses/" + course_uuid));
+HttpClient::Response EduClient::list_my_courses() {
+    return http_.get("/api/courses/");
 }
 
-CourseOut EduClient::create_course(const CourseCreate& data) {
-    return from_json_course(http_.post("/api/courses", to_json(data)));
+HttpClient::Response EduClient::get_course(const std::string& course_uuid) {
+    return http_.get("/api/courses/" + course_uuid);
+}
+
+HttpClient::Response EduClient::update_course(const std::string& course_uuid,
+                                               const std::string& name,
+                                               const std::string& description) {
+    json::object body;
+    if (!name.empty())        body["name"] = name;
+    if (!description.empty()) body["description"] = description;
+    return http_.patch("/api/courses/" + course_uuid, body);
+}
+
+HttpClient::Response EduClient::delete_course(const std::string& course_uuid) {
+    return http_.del("/api/courses/" + course_uuid);
+}
+
+// ---- Course Members ----
+HttpClient::Response EduClient::list_members(const std::string& course_uuid) {
+    return http_.get("/api/courses/" + course_uuid + "/members");
+}
+
+HttpClient::Response EduClient::add_member(const std::string& course_uuid,
+                                            const std::string& username,
+                                            const std::string& student_no) {
+    json::object body;
+    if (!username.empty())    body["username"] = username;
+    if (!student_no.empty())  body["student_no"] = student_no;
+    return http_.post("/api/courses/" + course_uuid + "/members", body);
+}
+
+HttpClient::Response EduClient::remove_member(const std::string& course_uuid,
+                                               const std::string& user_uuid) {
+    return http_.del("/api/courses/" + course_uuid + "/members/" + user_uuid);
 }
 
 // ---- Units ----
-UnitOut EduClient::create_unit(const std::string& course_uuid,
-                               const std::string& name,
-                               double weight, double full_score, int order) {
+HttpClient::Response EduClient::create_unit(const std::string& course_uuid,
+                                             const std::string& name,
+                                             double weight, double full_score,
+                                             int unit_order) {
     json::object body;
     body["name"]       = name;
     body["weight"]     = weight;
     body["full_score"] = full_score;
-    body["unit_order"] = order;
-    return from_json_unit(
-        http_.post("/api/courses/" + course_uuid + "/units", body));
+    body["unit_order"] = unit_order;
+    return http_.post("/api/courses/" + course_uuid + "/units", body);
+}
+
+HttpClient::Response EduClient::list_units(const std::string& course_uuid) {
+    return http_.get("/api/courses/" + course_uuid + "/units");
+}
+
+HttpClient::Response EduClient::update_unit(const std::string& course_uuid,
+                                             int unit_id, const std::string& name,
+                                             double weight, double full_score,
+                                             int unit_order) {
+    json::object body;
+    if (!name.empty())       body["name"]       = name;
+    if (weight >= 0)         body["weight"]     = weight;
+    if (full_score >= 0)     body["full_score"] = full_score;
+    if (unit_order >= 0)     body["unit_order"] = unit_order;
+    return http_.patch("/api/courses/" + course_uuid + "/units/"
+                       + std::to_string(unit_id), body);
+}
+
+HttpClient::Response EduClient::delete_unit(const std::string& course_uuid,
+                                             int unit_id) {
+    return http_.del("/api/courses/" + course_uuid + "/units/"
+                     + std::to_string(unit_id));
+}
+
+HttpClient::Response EduClient::reorder_units(
+    const std::string& course_uuid,
+    const std::vector<std::pair<int, int>>& items) {
+    json::array arr;
+    for (auto& kv : items)
+        arr.push_back({{"unit_id", kv.first}, {"unit_order", kv.second}});
+    return http_.post("/api/courses/" + course_uuid + "/units/reorder", arr);
 }
 
 // ---- Scores ----
-std::vector<ScoreSingleOut> EduClient::list_scores(
-    const std::string& course_uuid, int unit_id, int page) {
-    std::string path = "/api/scores/" + course_uuid
-                     + "?unit_id=" + std::to_string(unit_id)
-                     + "&page=" + std::to_string(page);
-    std::vector<ScoreSingleOut> ret;
-    auto jv = http_.get(path);
-    auto& obj = jv.as_object();
-    for (auto& item : obj.at("items").as_array())
-        ret.push_back(from_json_score(item));
-    return ret;
+HttpClient::Response EduClient::create_score(const std::string& course_uuid,
+                                              const std::string& student_uuid,
+                                              int unit_id, double score) {
+    json::object body;
+    body["course_uuid"]  = course_uuid;
+    body["student_uuid"] = student_uuid;
+    body["unit_id"]      = unit_id;
+    body["score"]        = score;
+    return http_.post("/api/scores/", body);
 }
 
-void EduClient::batch_upload_scores(const ScoreBatchCreate& batch) {
-    http_.post("/api/scores/batch", to_json(batch));
+HttpClient::Response EduClient::batch_upload_scores(const ScoreBatchCreate& batch) {
+    return http_.post("/api/scores/batch", to_json(batch));
 }
 
-ScoreDistributionOut EduClient::score_distribution(
-    const std::string& course_uuid, int unit_id) {
-    std::string path = "/api/scores/" + course_uuid
-                     + "/distribution?unit_id=" + std::to_string(unit_id);
-    return from_json_distribution(http_.get(path));
+HttpClient::Response EduClient::get_my_scores(const std::string& course_uuid) {
+    return http_.get("/api/scores/course/" + course_uuid + "/my");
+}
+
+HttpClient::Response EduClient::get_score_summary(const std::string& course_uuid) {
+    return http_.get("/api/scores/course/" + course_uuid + "/summary");
+}
+
+HttpClient::Response EduClient::get_score_distribution(const std::string& course_uuid) {
+    return http_.get("/api/scores/course/" + course_uuid + "/distribution");
 }
 
 // ---- Videos ----
-VideoOut EduClient::create_video(const VideoCreate& data) {
-    return from_json_video(http_.post("/api/videos", to_json(data)));
+HttpClient::Response EduClient::create_video(const VideoCreate& data) {
+    return http_.post("/api/videos/", to_json(data));
 }
 
-std::vector<VideoOut> EduClient::list_videos(const std::string& course_uuid) {
-    std::string path = "/api/videos";
-    if (!course_uuid.empty()) path += "?course_uuid=" + course_uuid;
-    std::vector<VideoOut> ret;
-    auto jv = http_.get(path);
-    for (auto& item : jv.as_array())
-        ret.push_back(from_json_video(item));
-    return ret;
+HttpClient::Response EduClient::list_videos(const std::string& course_uuid) {
+    return http_.get("/api/videos/course/" + course_uuid);
 }
 
-VideoDetailOut EduClient::get_video(const std::string& video_uuid) {
-    return from_json_video_detail(http_.get("/api/videos/" + video_uuid));
+HttpClient::Response EduClient::get_video(const std::string& video_uuid) {
+    return http_.get("/api/videos/" + video_uuid);
+}
+
+HttpClient::Response EduClient::update_video(const std::string& video_uuid,
+                                              const std::string& title,
+                                              const std::string& description,
+                                              const std::string& status) {
+    json::object body;
+    if (!title.empty())       body["title"]       = title;
+    if (!description.empty()) body["description"] = description;
+    if (!status.empty())      body["status"]      = status;
+    return http_.patch("/api/videos/" + video_uuid, body);
+}
+
+HttpClient::Response EduClient::delete_video(const std::string& video_uuid) {
+    return http_.del("/api/videos/" + video_uuid);
+}
+
+HttpClient::Response EduClient::stream_video(const std::string& video_uuid) {
+    return http_.get("/api/videos/" + video_uuid + "/stream");
 }
 
 // ---- Play Records ----
-void EduClient::update_progress(const std::string& video_uuid,
-                                int progress, bool completed) {
-    PlayRecordUpdate data{video_uuid, progress, completed};
-    http_.post("/api/play-records", to_json(data));
+HttpClient::Response EduClient::update_progress(const std::string& video_uuid,
+                                                 int progress, bool completed) {
+    json::object body;
+    body["video_uuid"] = video_uuid;
+    body["progress"]   = progress;
+    body["completed"]  = completed;
+    return http_.post("/api/play-records/update", body);
 }
 
-// ---- Health ----
-json::value EduClient::health() {
-    return http_.get("/");
+HttpClient::Response EduClient::get_play_record(const std::string& video_uuid) {
+    return http_.get("/api/play-records/" + video_uuid);
+}
+
+HttpClient::Response EduClient::get_my_course_records(const std::string& course_uuid) {
+    return http_.get("/api/play-records/course/" + course_uuid + "/my");
+}
+
+// ---- Files ----
+HttpClient::Response EduClient::upload_video(const std::string& file_path,
+                                              const std::string& course_uuid) {
+    return http_.upload("/api/files/upload/video?course_uuid=" + course_uuid,
+                        "file", file_path);
+}
+
+HttpClient::Response EduClient::upload_cover(const std::string& file_path) {
+    return http_.upload("/api/files/upload/cover", "file", file_path);
+}
+
+HttpClient::Response EduClient::get_cover(const std::string& video_uuid) {
+    return http_.get("/api/files/cover/" + video_uuid);
 }

@@ -184,11 +184,81 @@ struct VideoDetailOut {
     std::string created_at;
 };
 
+// ----- Course Member -----
+struct CourseMemberAdd {
+    std::string username;
+    std::string student_no;
+};
+
+struct CourseMemberOut {
+    std::string user_uuid;
+    std::string username;
+    std::string member_role;
+    std::string joined_at;
+    struct Student {
+        std::string student_no;
+        std::string real_name;
+    };
+    std::optional<Student> student;
+};
+
 // ----- Play Record -----
 struct PlayRecordUpdate {
     std::string video_uuid;
     int progress = 0;
     bool completed = false;
+};
+
+struct PlayRecordOut {
+    std::string video_uuid;
+    int progress = 0;
+    bool completed = false;
+    std::string last_played_at;
+};
+
+struct PlayRecordCourseOut {
+    std::string video_uuid;
+    std::string video_title;
+    int progress = 0;
+    int duration = 0;
+    bool completed = false;
+    std::string last_played_at;
+};
+
+// ----- My Score -----
+struct MyScoreItem {
+    int unit_id = 0;
+    std::optional<double> score;
+};
+
+struct ScoreMyOut {
+    std::string course_name;
+    std::vector<UnitOut> units;
+    std::vector<MyScoreItem> my_scores;
+    std::optional<double> weighted_total;
+    std::optional<int> rank;
+};
+
+struct ScoreSummaryStudent {
+    std::string student_uuid;
+    std::string student_no;
+    std::string real_name;
+    std::vector<std::optional<double>> scores;
+    std::optional<double> weighted_total;
+    std::optional<int> rank;
+};
+
+struct ScoreSummaryOut {
+    std::string course_name;
+    std::vector<std::string> unit_names;
+    std::vector<double> unit_weights;
+    std::vector<ScoreSummaryStudent> students;
+};
+
+// ----- Student Bind -----
+struct StudentBind {
+    std::string student_no;
+    std::string real_name;
 };
 
 // ----- File -----

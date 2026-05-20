@@ -26,9 +26,11 @@ static void apply_timeout(tcp::socket& socket, int sec) {
     ::setsockopt(socket.native_handle(), SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 }
 
-json::value HttpClient::request(const std::string& method,
-                                const std::string& path,
-                                const json::value& body) {
+HttpClient::Response HttpClient::request(const std::string& method,
+                                          const std::string& path,
+                                          const json::value& body) {
+    Response rsp;
+
     // 1. 连接
     net::io_context ioc;
     tcp::socket socket(ioc);
@@ -41,11 +43,12 @@ json::value HttpClient::request(const std::string& method,
     http::verb v = http::verb::get;
     if (method == "POST")   v = http::verb::post;
     if (method == "PUT")    v = http::verb::put;
+    if (method == "PATCH")  v = http::verb::patch;
     if (method == "DELETE") v = http::verb::delete_;
 
     http::request<http::string_body> req{v, path, 11};
     req.set(http::field::host, host_);
-    req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+    req.set(http::field::user_agent, "EduClient/1.0");
     req.set(http::field::content_type, "application/json");
     if (!token_.empty())
         req.set(http::field::authorization, "Bearer " + token_);
@@ -66,42 +69,53 @@ json::value HttpClient::request(const std::string& method,
     socket.shutdown(tcp::socket::shutdown_both, ec);
 
     // 5. 解析
+    rsp.status_code = resp.result_int();
+
+    if (rsp.status_code == 204)
+        return rsp;  // 空 body
+
     std::string resp_body = beast::buffers_to_string(resp.body().data());
     boost::system::error_code jec;
     json::value jv = json::parse(resp_body, jec);
     if (jec)
         throw std::runtime_error("JSON 解析失败: " + jec.message());
 
-    if (resp.result_int() >= 400) {
+    if (rsp.status_code >= 400) {
         auto& obj = jv.as_object();
-        std::string detail = "HTTP " + std::to_string(resp.result_int());
+        std::string detail = "HTTP " + std::to_string(rsp.status_code);
         if (obj.find("detail") != obj.end())
             detail += ": " + json::value_to<std::string>(obj["detail"]);
         throw std::runtime_error(detail);
     }
 
-    return jv;
+    rsp.body = jv;
+    return rsp;
 }
 
-json::value HttpClient::get(const std::string& path) {
+HttpClient::Response HttpClient::get(const std::string& path) {
     return request("GET", path, {});
 }
 
-json::value HttpClient::post(const std::string& path, const json::value& body) {
+HttpClient::Response HttpClient::post(const std::string& path, const json::value& body) {
     return request("POST", path, body);
 }
 
-json::value HttpClient::put(const std::string& path, const json::value& body) {
+HttpClient::Response HttpClient::patch(const std::string& path, const json::value& body) {
+    return request("PATCH", path, body);
+}
+
+HttpClient::Response HttpClient::put(const std::string& path, const json::value& body) {
     return request("PUT", path, body);
 }
 
-json::value HttpClient::del(const std::string& path, const json::value& body) {
+HttpClient::Response HttpClient::del(const std::string& path, const json::value& body) {
     return request("DELETE", path, body);
 }
 
-json::value HttpClient::upload(const std::string& path,
-                               const std::string& file_field,
-                               const std::string& file_path) {
+HttpClient::Response HttpClient::upload(const std::string& path,
+                                         const std::string& file_field,
+                                         const std::string& file_path) {
+    Response rsp;
     net::io_context ioc;
     tcp::socket socket(ioc);
     apply_timeout(socket, timeout_sec_);
@@ -120,11 +134,26 @@ json::value HttpClient::upload(const std::string& path,
     std::string boundary = "----EduClientBoundary" + std::to_string(
         std::chrono::steady_clock::now().time_since_epoch().count());
 
+    // 提取文件名和 MIME
+    auto slash = file_path.find_last_of('/');
+    std::string filename = (slash != std::string::npos)
+                               ? file_path.substr(slash + 1)
+                               : file_path;
+    std::string mime = "application/octet-stream";
+    auto dot = filename.find_last_of('.');
+    if (dot != std::string::npos) {
+        std::string ext = filename.substr(dot);
+        if (ext == ".mp4") mime = "video/mp4";
+        else if (ext == ".jpg" || ext == ".jpeg") mime = "image/jpeg";
+        else if (ext == ".png") mime = "image/png";
+        else if (ext == ".webp") mime = "image/webp";
+    }
+
     std::ostringstream body_ss;
     body_ss << "--" << boundary << "\r\n"
             << "Content-Disposition: form-data; name=\"" << file_field
-            << "\"; filename=\"" << file_path << "\"\r\n"
-            << "Content-Type: application/octet-stream\r\n\r\n"
+            << "\"; filename=\"" << filename << "\"\r\n"
+            << "Content-Type: " << mime << "\r\n\r\n"
             << file_content << "\r\n"
             << "--" << boundary << "--\r\n";
 
@@ -145,10 +174,14 @@ json::value HttpClient::upload(const std::string& path,
     beast::error_code ec;
     socket.shutdown(tcp::socket::shutdown_both, ec);
 
+    rsp.status_code = resp.result_int();
+    if (rsp.status_code == 204) return rsp;
+
     std::string resp_body = beast::buffers_to_string(resp.body().data());
     boost::system::error_code jec;
     json::value jv = json::parse(resp_body, jec);
     if (jec)
         throw std::runtime_error("JSON 解析失败: " + jec.message());
-    return jv;
+    rsp.body = jv;
+    return rsp;
 }

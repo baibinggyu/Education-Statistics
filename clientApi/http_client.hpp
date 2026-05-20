@@ -14,30 +14,30 @@ public:
     void set_token(const std::string& token) { token_ = token; }
     bool has_token() const { return !token_.empty(); }
 
-    /// HTTP 方法。返回 JSON，出错时抛 std::runtime_error。
-    boost::json::value get (const std::string& path);
-    boost::json::value post(const std::string& path,
-                            const boost::json::value& body);
-    boost::json::value put (const std::string& path,
-                            const boost::json::value& body);
-    boost::json::value del (const std::string& path,
-                            const boost::json::value& body = {});
+    /// HTTP 方法。返回 JSON + status_code，出错时抛 std::runtime_error。
+    /// 对于 204 No Content 返回空 object。
+    struct Response {
+        boost::json::value body;
+        int status_code = 0;
+    };
+    Response get (const std::string& path);
+    Response post(const std::string& path, const boost::json::value& body);
+    Response patch(const std::string& path, const boost::json::value& body);
+    Response put (const std::string& path, const boost::json::value& body);
+    Response del (const std::string& path, const boost::json::value& body = {});
 
-    // 文件上传（multipart）
-    boost::json::value upload(const std::string& path,
-                              const std::string& file_field,
-                              const std::string& file_path);
+    // 文件上传（multipart），extra_fields 作为 query params 附加到 URL
+    Response upload(const std::string& path,
+                    const std::string& file_field,
+                    const std::string& file_path);
 
 private:
     std::string host_;
     int port_;
     std::string token_;
-    int timeout_sec_ = 5;  // 默认 5 秒超时
+    int timeout_sec_ = 10;  // 默认 10 秒超时
 
-    boost::json::value request(const std::string& method,
-                               const std::string& path,
-                               const boost::json::value& body);
-    boost::json::value request_multipart(const std::string& path,
-                                         const std::string& file_field,
-                                         const std::string& file_path);
+    Response request(const std::string& method,
+                     const std::string& path,
+                     const boost::json::value& body);
 };
