@@ -154,18 +154,96 @@ Standalone video player with playback controls.
 - **Test files**: `mov_bbb.mp4` (771 KB, Big Buck Bunny clip), `test_mute.cpp` (standalone audio debug utility, not in CMake build)
 - **Build env**: Linux, Qt 6.11.0 system-wide, CMake 4.3.2
 
-### routing (`routing/`) — FastAPI Video Streaming Server
-Python backend for video streaming with a comprehensive planned backend.
+### routing (`routing/`) — edu_server FastAPI Backend + Video Streaming
 
-- **Run**: `cd routing && uvicorn main:app --host localhost --port 11111`
-- **Dependencies**: FastAPI, Uvicorn, SQLAlchemy, PyMySQL, passlib[bcrypt], python-jose, alembic, httpx, pytest (venv at `routing/edu_routing/`, Python 3.14.4, managed with uv)
-- **Current endpoints**: `GET /` (health check), `GET /source/edu/{filename:path}` (video streaming with MIME type detection for mp4/avi/mov/mkv/webm/flv)
-- **Planned backend** (`plan.md`, 1257 lines): Full auth + courses + videos + play_records API spec with FastAPI + SQLAlchemy + MariaDB + JWT + bcrypt
-  - Target: 6 router modules (auth, users, courses, videos, play_records), 8 database models
-  - Port: 55555 behind Nginx (plan.md) vs 11111 (current main.py)
-- **Test infrastructure**: Pytest configured with 91 tests across `tests/test_alchemy.py` (44 tests for DB/ORM) and `tests/test_routes.py` (47 tests for API endpoints). Cached test node IDs present in `net_state/.pytest_cache/`
-- **Media**: `source/edu/test.mp4` (test video file)
-- **Status**: Only the 2 minimal endpoints in `main.py` are implemented. The full backend from `plan.md` does not yet exist as source files.
+Full REST API backend with JWT auth, role-based access control, and MariaDB persistence.
+
+- **Start (edu_server)**: `cd routing && source edu_routing/bin/activate && python -m uvicorn edu_server.main:app --host 127.0.0.1 --port 55555`
+- **Start (legacy main.py, 2-endpoint only)**: `cd routing && source edu_routing/bin/activate && uvicorn main:app --host localhost --port 11111`
+- **Dependencies**: FastAPI, Uvicorn, SQLAlchemy, PyMySQL, passlib[bcrypt], python-jose[cryptography], python-multipart (venv at `routing/edu_routing/`, Python 3.14.4, managed by uv)
+- **Database**: MariaDB 12.2.2, `edu_server_database` on localhost:3306, user `edu_user`:`edu123` (or root), charset utf8mb4
+- **Spec doc**: `plan.md` (1257 lines)
+
+#### Architecture
+
+```
+edu_server/
+├── main.py              # FastAPI app entry, router includes, create_all tables
+├── database.py          # SQLAlchemy engine + SessionLocal + get_db() generator
+├── models.py            # 8 ORM models (User, Student, Course, CourseMember, Unit, Score, Video, PlayRecord)
+├── schemas.py           # 10 Pydantic models for request/response validation
+├── security.py          # bcrypt password hashing + JWT (HS256, 7-day expiry)
+├── deps.py              # 3-layer auth deps: get_current_user → require_teacher_or_admin → require_admin
+├── requirements.txt
+└── routers/
+    ├── auth.py          # POST /api/auth/register, POST /api/auth/login
+    ├── users.py         # GET /api/users/me
+    ├── courses.py       # POST/GET /api/courses/, GET /api/courses/{uuid}
+    ├── videos.py        # POST /api/videos/, GET /api/videos/course/{uuid}, GET /api/videos/{uuid}
+    └── play_records.py  # POST /api/play-records/update, GET /api/play-records/{uuid}
+```
+
+#### API Endpoints (13 total)
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| GET | `/` | none | Health check `{"name":"Edu Server","status":"running"}` |
+| GET | `/source/edu/{filename:path}` | none | Video file streaming (MIME by extension) |
+| POST | `/api/auth/register` | none | Create user (username, password, role) → 201 |
+| POST | `/api/auth/login` | none | Login → JWT `{access_token, token_type}` |
+| GET | `/api/users/me` | Bearer | Get current user info |
+| POST | `/api/courses/` | teacher/admin | Create course + auto-join creator as member |
+| GET | `/api/courses/` | Bearer | List user's courses (admin sees all normal) |
+| GET | `/api/courses/{uuid}` | Bearer | Get course detail (must be member or admin) |
+| POST | `/api/videos/` | teacher/admin | Upload video to a course |
+| GET | `/api/videos/course/{uuid}` | Bearer | List videos in a course |
+| GET | `/api/videos/{uuid}` | Bearer | Get single video detail |
+| POST | `/api/play-records/update` | Bearer | Upsert play progress (video_uuid, progress, completed) |
+| GET | `/api/play-records/{uuid}` | Bearer | Get user's play record (default `{progress:0, completed:false}`) |
+
+**Auth chain**: `OAuth2PasswordBearer(tokenUrl="/api/auth/login")` — JWT payload carries `sub` (user UUID) + `role`. Three dependency levels: `get_current_user` (any valid token) → `require_teacher_or_admin` (teacher/admin) → `require_admin` (admin only).
+
+#### How to test
+
+**Methodology — 4-phase approach used for all endpoint verification:**
+
+1. **Env prep**: Confirm MariaDB is running (`systemctl status mariadb`), venv has all deps, test data exists (`source/edu/test.mp4`).
+2. **Unit validation before server start**: Directly import and exercise security, database, and route modules in a Python one-liner to catch import errors and library incompatibilities before touching HTTP.
+   ```bash
+   source edu_routing/bin/activate
+   python -c "from edu_server.main import app; print([r.path for r in app.routes])"
+   python -c "from edu_server.security import hash_password, verify_password; h=hash_password('x'); assert verify_password('x',h)"
+   python -c "from edu_server.database import engine; engine.connect()"
+   ```
+3. **Automated curl matrix**: Write a bash script with a `check()` helper that asserts HTTP status codes against expected values. Covers all 6 test dimensions:
+   - **Positive path** — valid requests return correct data
+   - **Auth enforcement** — missing/invalid/expired tokens → 401
+   - **Role boundaries** — student can't create courses/videos → 403; non-member can't access course → 403
+   - **Input validation** — duplicate username → 400; invalid role → 400; wrong password → 401
+   - **Edge cases** — empty filename (was 500, now 404); non-existent UUID → 404
+   - **Data flow chain** — register → login → get token → create course (capture UUID) → create video (capture UUID) → update play record → read back to verify persistence
+4. **Clean summary**: One endpoint per line, status code only, quick visual scan for regressions.
+
+**Quick smoke test (bash one-liner):**
+```bash
+# Start server in background, run tests, kill
+cd routing && source edu_routing/bin/activate
+python -m uvicorn edu_server.main:app --host 127.0.0.1 --port 55555 &
+# Test all 13 endpoints
+curl -s http://127.0.0.1:55555/ | python3 -m json.tool
+curl -s http://127.0.0.1:55555/source/edu/test.mp4 -o /dev/null -w "%{http_code} %{content_type}\n"
+curl -s -X POST http://127.0.0.1:55555/api/auth/register -H "Content-Type: application/json" -d '{"username":"t","password":"p","role":"teacher"}'
+# ...etc. Full script available if needed.
+fuser -k 55555/tcp
+```
+
+#### Known Pitfalls
+
+- **`Path.exists()` vs `Path.is_file()`**: In `main.py`, checking `.exists()` on an empty-path `source/edu/` returns True (it's a directory), causing `FileResponse` to throw 500. Always use `.is_file()` for file-serving endpoints.
+- **bcrypt 5.x incompatible with passlib 1.7.4**: passlib reads `bcrypt.__about__.__version__` which was removed in bcrypt 5.x. Pinning `bcrypt<5` (currently 4.3.0) avoids the crash. The passlib warning `(trapped) error reading bcrypt version` is cosmetic — hashing and verification still work.
+- **uv venv has no pip**: The virtualenv at `edu_routing/` was created by uv and doesn't include pip. Use `python -m ensurepip` once, then `python -m pip install <pkg>`.
+- **Port conflicts**: Use `fuser -k 55555/tcp` to kill stale processes before restarting the server. `lsof` is not installed on this system.
+- **UUID in API paths, not internal BIGINT IDs**: All client-facing routes use `uuid` strings. Internal DB relationships use `BIGINT id`. Never expose numeric IDs in API responses.
 
 ### edu_pe (`edu_pe/`) — QML Mobile Learning Prototype
 Pure QML phone-style UI prototype (超星学习平台), no C++ backend.
@@ -228,4 +306,4 @@ Single-file static landing page presenting the entire edu monorepo.
 - **Language**: UI text and comments are primarily Chinese (educational context). Student data uses Chinese column headers (`学号`, `班级`, `姓名`)
 - **Current stage**: First-generation platform prototype with multiple independent applications
 - **Duplicated source tree**: `EduStat/` and `EduStat/EduStat/` contain identical source files; the nested directory is the actual git repository root
-- **Port conventions**: `routing/` runs on port 11111 (current) or 55555 behind Nginx (planned)
+- **Port conventions**: `routing/edu_server` runs on 127.0.0.1:55555; legacy `routing/main.py` on 11111
