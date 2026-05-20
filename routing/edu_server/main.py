@@ -1,8 +1,9 @@
-from fastapi import FastAPI, HTTPException, APIRouter
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pathlib import Path
-import uvicorn
-from pydantic import BaseModel
+from .database import engine, Base
+from .routers import auth, users, courses, videos, play_records
+
 VIDEO_MIME_MAP = {
     ".mp4": "video/mp4",
     ".avi": "video/x-msvideo",
@@ -11,14 +12,23 @@ VIDEO_MIME_MAP = {
     ".webm": "video/webm",
     ".flv": "video/x-flv",
 }
-app = FastAPI()
-router = APIRouter()
+
+# Create all tables on startup (safe if tables already exist)
+Base.metadata.create_all(bind=engine)
+
+app = FastAPI(title="Edu Server", version="0.1.0")
+
+# Include API routers
+app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(courses.router)
+app.include_router(videos.router)
+app.include_router(play_records.router)
 
 
 @app.get("/")
 def root():
-
-    return {"message": "Hello from FastAPI root"}
+    return {"name": "Edu Server", "status": "running"}
 
 
 @app.get("/source/edu/{filename:path}")
@@ -29,7 +39,3 @@ def get_source_edu(filename: str):
     ext = file_path.suffix.lower()
     ret_media_type = VIDEO_MIME_MAP.get(ext, "application/octet-stream")
     return FileResponse(file_path, media_type=ret_media_type)
-
-
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="localhost", port=11111, reload=True)
