@@ -12,7 +12,7 @@ Item {
         id: chat
         onMessageReceived: function(role, content) {
             msgModel.append({role: role, content: content})
-            msgList.positionViewAtEnd()
+            scrollToBottom()
         }
         onErrorOccurred: function(msg) {
             msgModel.append({role: "system", content: "[错误] " + msg})
@@ -141,13 +141,21 @@ Item {
                                        role === "system" ? Qt.rgba(40/255, 25/255, 25/255, 1) :
                                        Qt.rgba(30/255, 34/255, 40/255, 1)
 
-                                FluText {
+                                TextArea {
                                     anchors.fill: parent
                                     text: content
                                     font.pixelSize: 12
-                                    textColor: role === "user" ? "#ffffff" :
+                                    color: role === "user" ? "#ffffff" :
                                                role === "system" ? "#ef4444" : "#e0e0e0"
-                                    wrapMode: Text.WordWrap
+                                    wrapMode: TextArea.WordWrap
+                                    readOnly: true
+                                    selectByMouse: true
+                                    background: null
+                                    padding: 0
+                                    topPadding: 0
+                                    bottomPadding: 0
+                                    leftPadding: 0
+                                    rightPadding: 0
                                 }
                             }
                         }
@@ -211,7 +219,7 @@ Item {
                         msgModel.append({role: "user", content: txt})
                         chat.sendMessage(txt)
                         inputBox.text = ""
-                        msgList.positionViewAtEnd()
+                        scrollToBottom()
                     }
                 }
             }
@@ -219,7 +227,8 @@ Item {
     }
 
     // 辅助：滚动到底部
-    function msgList_scroll() {
-        msgList.positionViewAtEnd()
+    function scrollToBottom() {
+        if (scrollView.ScrollBar.vertical)
+            scrollView.ScrollBar.vertical.position = 1.0 - scrollView.ScrollBar.vertical.size
     }
 }

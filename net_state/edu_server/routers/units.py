@@ -159,6 +159,9 @@ def delete_unit(
     if unit is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unit not found")
 
+    # 先删除关联的成绩
+    from models import Score
+    db.query(Score).filter(Score.unit_id == unit.id).delete()
     db.delete(unit)
     db.commit()
 

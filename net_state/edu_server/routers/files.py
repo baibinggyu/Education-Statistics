@@ -17,8 +17,8 @@ from schemas import FileUploadOut
 router = APIRouter()
 
 # 上传目录
-UPLOAD_VIDEO_DIR = "/srv/edu/uploads/videos"
-UPLOAD_COVER_DIR = "/srv/edu/uploads/covers"
+UPLOAD_VIDEO_DIR = "/tmp/edu/uploads/videos"
+UPLOAD_COVER_DIR = "/tmp/edu/uploads/covers"
 
 # 允许的视频类型
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv"}

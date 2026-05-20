@@ -130,23 +130,74 @@ ChatResponse ChatClient::chat(const std::vector<Message>& messages) {
     }
     auto obj = jv.as_object();
 
-    // API 错误
-    if (obj.find("error") != obj.end()) {
-        auto err = obj["error"].as_object();
-        resp.error = json::value_to<std::string>(err["message"]);
+    // 辅助：安全提取字符串字段
+    auto safe_str = [](const json::value& v) -> std::string {
+        if (v.is_string()) return json::value_to<std::string>(v);
+        if (v.is_int64()) return std::to_string(v.as_int64());
+        if (v.is_double()) return std::to_string(v.as_double());
+        if (v.is_bool()) return v.as_bool() ? "true" : "false";
+        if (v.is_null()) return "";
+        return json::serialize(v);
+    };
+
+    // HTTP 错误状态码（非 200）
+    if (http_resp.result() != http::status::ok) {
         resp.ok = false;
+        if (obj.find("error") != obj.end()) {
+            try {
+                auto err = obj["error"];
+                if (err.is_object() && err.as_object().find("message") != err.as_object().end())
+                    resp.error = safe_str(err.as_object().at("message"));
+                else if (err.is_string())
+                    resp.error = json::value_to<std::string>(err);
+                else
+                    resp.error = json::serialize(err);
+            } catch (...) {
+                resp.error = resp_body;
+            }
+        } else {
+            resp.error = "HTTP " + std::to_string(http_resp.result_int()) + ": " + resp_body;
+        }
         return resp;
     }
 
     // 提取 content[0].text
-    auto content_arr = obj["content"].as_array();
-    if (!content_arr.empty()) {
-        resp.content = json::value_to<std::string>(
-            content_arr[0].as_object()["text"]);
+    try {
+        auto it = obj.find("content");
+        if (it != obj.end() && it->value().is_array()) {
+            auto content_arr = it->value().as_array();
+            if (!content_arr.empty()) {
+                auto& first = content_arr[0];
+                if (first.is_object()) {
+                    auto& fobj = first.as_object();
+                    auto type_it = fobj.find("type");
+                    std::string type = (type_it != fobj.end()) ? safe_str(type_it->value()) : "";
+                    if (type == "text" || type.empty()) {
+                        auto text_it = fobj.find("text");
+                        if (text_it != fobj.end())
+                            resp.content = safe_str(text_it->value());
+                    }
+                    // type == "tool_use" 等暂不处理
+                }
+            }
+        }
+    } catch (...) {
+        resp.error = "解析 content 字段失败";
+        return resp;
     }
-    resp.stop_reason   = json::value_to<std::string>(obj.at("stop_reason"));
-    resp.input_tokens  = static_cast<int>(obj["usage"].as_object()["input_tokens"].as_int64());
-    resp.output_tokens = static_cast<int>(obj["usage"].as_object()["output_tokens"].as_int64());
+
+    // stop_reason (可选)
+    auto sr_it = obj.find("stop_reason");
+    if (sr_it != obj.end())
+        resp.stop_reason = safe_str(sr_it->value());
+
+    // usage (可选)
+    auto usage_it = obj.find("usage");
+    if (usage_it != obj.end() && usage_it->value().is_object()) {
+        auto& u = usage_it->value().as_object();
+        resp.input_tokens  = static_cast<int>(json::value_to<int64_t>(u.at("input_tokens")));
+        resp.output_tokens = static_cast<int>(json::value_to<int64_t>(u.at("output_tokens")));
+    }
     resp.ok = true;
 
     return resp;

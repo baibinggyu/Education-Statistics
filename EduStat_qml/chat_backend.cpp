@@ -28,8 +28,24 @@ void ChatBackend::sendMessage(const QString& text) {
     auto* watcher = new QFutureWatcher<ChatResponse>(this);
     connect(watcher, &QFutureWatcher<ChatResponse>::finished, this,
             [this, watcher]() {
-                ChatResponse resp = watcher->result();
                 setLoading(false);
+                ChatResponse resp;
+                try {
+                    resp = watcher->result();
+                } catch (const std::exception& e) {
+                    history_.pop_back();
+                    emit errorOccurred(QString::fromStdString(
+                        std::string("网络异常: ") + e.what()));
+                    emit chatStateChanged();
+                    watcher->deleteLater();
+                    return;
+                } catch (...) {
+                    history_.pop_back();
+                    emit errorOccurred("未知异常");
+                    emit chatStateChanged();
+                    watcher->deleteLater();
+                    return;
+                }
 
                 if (resp.ok) {
                     history_.push_back({"assistant", resp.content});
@@ -44,8 +60,15 @@ void ChatBackend::sendMessage(const QString& text) {
             });
 
     auto msgs = history_;
-    auto future = QtConcurrent::run([this, msgs]() {
-        return client_.chat(msgs);
+    auto future = QtConcurrent::run([this, msgs]() -> ChatResponse {
+        try {
+            return client_.chat(msgs);
+        } catch (const std::exception& e) {
+            ChatResponse resp;
+            resp.ok = false;
+            resp.error = std::string("网络异常: ") + e.what();
+            return resp;
+        }
     });
     watcher->setFuture(future);
 }
@@ -62,7 +85,22 @@ void ChatBackend::compressHistory() {
     auto* watcher = new QFutureWatcher<ChatResponse>(this);
     connect(watcher, &QFutureWatcher<ChatResponse>::finished, this,
             [this, watcher]() {
-                ChatResponse resp = watcher->result();
+                ChatResponse resp;
+                try {
+                    resp = watcher->result();
+                } catch (const std::exception& e) {
+                    emit errorOccurred(QString::fromStdString(
+                        std::string("压缩异常: ") + e.what()));
+                    emit chatStateChanged();
+                    watcher->deleteLater();
+                    return;
+                } catch (...) {
+                    emit errorOccurred("压缩过程未知异常");
+                    emit chatStateChanged();
+                    watcher->deleteLater();
+                    return;
+                }
+
                 if (resp.ok) {
                     emit compressed();
                 } else {
@@ -72,8 +110,15 @@ void ChatBackend::compressHistory() {
                 watcher->deleteLater();
             });
 
-    auto future = QtConcurrent::run([this, cc]() mutable {
-        return client_.compress(history_, cc);
+    auto future = QtConcurrent::run([this, cc]() mutable -> ChatResponse {
+        try {
+            return client_.compress(history_, cc);
+        } catch (const std::exception& e) {
+            ChatResponse resp;
+            resp.ok = false;
+            resp.error = std::string("网络异常: ") + e.what();
+            return resp;
+        }
     });
     watcher->setFuture(future);
 }

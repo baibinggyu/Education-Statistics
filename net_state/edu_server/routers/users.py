@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from deps import get_current_user
 from models import Student, User
-from schemas import StudentBriefOut, UserMeOut, UserUpdate
+from schemas import StudentBind, StudentBriefOut, UserMeOut, UserUpdate
 
 router = APIRouter()
 
@@ -51,5 +51,50 @@ def update_me(
         current_user.username = data.username
         db.commit()
         db.refresh(current_user)
+
+    return get_me(db=db, current_user=current_user)
+
+
+@router.post("/bind", response_model=UserMeOut, status_code=status.HTTP_201_CREATED)
+def bind_student(
+    data: StudentBind,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """将当前用户绑定为学生档案（创建 Student 记录）。
+
+    仅限 role=student 的用户。如果已绑定则更新。
+    """
+    if current_user.role != "student":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only students can bind a student profile",
+        )
+
+    # 检查学号唯一性
+    dup = db.query(Student).filter(
+        Student.student_no == data.student_no,
+        Student.user_id != current_user.id,
+    ).first()
+    if dup:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Student number already taken",
+        )
+
+    student = db.query(Student).filter(Student.user_id == current_user.id).first()
+    if student:
+        student.student_no = data.student_no
+        student.real_name = data.real_name
+    else:
+        student = Student(
+            user_id=current_user.id,
+            student_no=data.student_no,
+            real_name=data.real_name,
+        )
+        db.add(student)
+
+    db.commit()
+    db.refresh(student)
 
     return get_me(db=db, current_user=current_user)
