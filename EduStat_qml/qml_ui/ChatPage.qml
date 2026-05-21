@@ -236,7 +236,7 @@ Item {
                     }
                     FluToggleSwitch {
                         id: agentToggle
-                        checked: false
+                        checked: chat.agentMode
                         enabled: !chat.loading
                         onClicked: chat.setAgentMode(checked)
                     }

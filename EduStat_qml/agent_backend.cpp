@@ -12,10 +12,69 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <csignal>
+#include <csetjmp>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <exception>
 #include <filesystem>
 #include <fstream>
+
+// ---------------------------------------------------------------------------
+// SIGSEGV recovery for worker threads (prevents whole-app crash)
+// ---------------------------------------------------------------------------
+static thread_local sigjmp_buf g_segv_jmp;
+static thread_local bool g_segv_ready = false;
+
+static void segv_handler(int sig) {
+    if (g_segv_ready) {
+        g_segv_ready = false;
+        siglongjmp(g_segv_jmp, 1);
+    }
+}
+
+static void install_segv_handler() {
+    struct sigaction sa{};
+    sa.sa_handler = segv_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sigaction(SIGSEGV, &sa, nullptr);
+}
+
+// RAII guard: restore SIGSEGV to default on scope exit
+struct SegvGuard {
+    ~SegvGuard() { signal(SIGSEGV, SIG_DFL); }
+};
+
+// ---------------------------------------------------------------------------
+// Cross-platform popen/pclose + exit-code extraction
+// ---------------------------------------------------------------------------
+#ifdef _WIN32
+#define POPEN _popen
+#define PCLOSE _pclose
+#define POPEN_MODE "rt"
+// _pclose on Windows returns the raw exit code, no macro needed
+inline int get_pclose_code(int status) { return status; }
+#else
+#define POPEN popen
+#define PCLOSE pclose
+#define POPEN_MODE "r"
+inline int get_pclose_code(int status) {
+    if (WIFEXITED(status)) return WEXITSTATUS(status);
+    if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
+    return -1;
+}
+#endif
+
+// timeout(1) is Linux; macOS has it via coreutils; Windows has no equivalent
+#ifdef _WIN32
+#define TIMEOUT_PREFIX ""
+#define CD_COMMAND "cd /d "
+#else
+#define TIMEOUT_PREFIX "timeout 30 "
+#define CD_COMMAND "cd "
+#endif
 #include <nlohmann/json.hpp>
 #include <thread>
 
@@ -127,6 +186,7 @@ void AgentBackend::initLLM() {
 void AgentBackend::setAgentMode(bool enabled) {
     if (agent_mode_ != enabled) {
         agent_mode_ = enabled;
+        saveStore();  // persist across restarts
         emit chatStateChanged();
     }
 }
@@ -197,7 +257,26 @@ void AgentBackend::runStreamingChat(const QString& userText) {
     ai::Client* clientPtr = &client_;
 
     QtConcurrent::run([self, aiMsgs = std::move(aiMsgs), model, clientPtr, this]() {
-        ai::GenerateOptions genOpts(model, aiMsgs);
+        SegvGuard segvGuard;
+        install_segv_handler();
+
+        try {
+            g_segv_ready = true;
+            if (sigsetjmp(g_segv_jmp, 1) != 0) {
+                g_segv_ready = false;
+                if (self) {
+                    QMetaObject::invokeMethod(self, [self]() {
+                        if (!self) return;
+                        self->streaming_ = false;
+                        self->loading_ = false;
+                        emit self->errorOccurred("Chat 执行时发生内存错误，请重试。");
+                        emit self->chatStateChanged();
+                    }, Qt::QueuedConnection);
+                }
+                return;
+            }
+
+            ai::GenerateOptions genOpts(model, aiMsgs);
         genOpts.system = ASSISTANT_SYSTEM_PROMPT;
         genOpts.max_tokens = 4096;
 
@@ -269,6 +348,35 @@ void AgentBackend::runStreamingChat(const QString& userText) {
                 emit self->chatStateChanged();
             }, Qt::QueuedConnection);
         }
+
+        } catch (const std::exception& e) {
+            g_segv_ready = false;
+            qDebug() << "[AgentBackend] Chat exception:" << e.what();
+            if (self) {
+                std::string err = e.what();
+                QMetaObject::invokeMethod(self, [self, err]() {
+                    if (!self) return;
+                    self->streaming_ = false;
+                    self->loading_ = false;
+                    emit self->errorOccurred(
+                        QStringLiteral("Chat 异常: %1").arg(QString::fromStdString(err)));
+                    emit self->chatStateChanged();
+                }, Qt::QueuedConnection);
+            }
+        } catch (...) {
+            g_segv_ready = false;
+            qDebug() << "[AgentBackend] Chat unknown exception";
+            if (self) {
+                QMetaObject::invokeMethod(self, [self]() {
+                    if (!self) return;
+                    self->streaming_ = false;
+                    self->loading_ = false;
+                    emit self->errorOccurred("Chat 未知异常，请重试。");
+                    emit self->chatStateChanged();
+                }, Qt::QueuedConnection);
+            }
+        }
+        g_segv_ready = false;
     });
 }
 
@@ -293,6 +401,10 @@ void AgentBackend::runAgent(const QString& userText) {
     ai::Client* clientPtr = &client_;
 
     QtConcurrent::run([self, aiMsgs = std::move(aiMsgs), model, clientPtr, this]() {
+        SegvGuard segvGuard;
+        install_segv_handler();
+
+        auto doAgentRun = [&](const std::vector<ai::Message>& msgs) -> bool {
         ai::ToolSet toolSet;
 
         // Calculator tool
@@ -509,22 +621,23 @@ void AgentBackend::runAgent(const QString& userText) {
                 if (command.empty()) return {{"error", "缺少 command 参数"}};
 
                 // timeout(1) enforces a 30s wall-clock limit; 2>&1 merges stderr
-                std::string full_cmd = "cd " + workspace + " && timeout 30 " + command + " 2>&1";
+                std::string full_cmd = std::string(CD_COMMAND) + workspace + " && "
+                    + std::string(TIMEOUT_PREFIX) + command + " 2>&1";
 
                 std::array<char, 4096> buffer{};
                 std::string output;
-                FILE* pipe = popen(full_cmd.c_str(), "r");
-                if (!pipe) return {{"error", "无法执行命令: " + std::string(strerror(errno))}};
+                FILE* pipe = POPEN(full_cmd.c_str(), POPEN_MODE);
+                if (!pipe) return {{"error", "无法执行命令: " + std::string(std::strerror(errno))}};
 
-                while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
+                while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
                     output += buffer.data();
                     if (output.size() > 512 * 1024) {
                         output += "\n...[truncated at 512KB]";
                         break;
                     }
                 }
-                int status = pclose(pipe);
-                int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+                int status = PCLOSE(pipe);
+                int exit_code = get_pclose_code(status);
 
                 // timeout(1) returns 124 when it kills the command
                 if (exit_code == 124) {
@@ -540,7 +653,7 @@ void AgentBackend::runAgent(const QString& userText) {
             }
         );
 
-        ai::GenerateOptions opts(model, aiMsgs);
+        ai::GenerateOptions opts(model, msgs);
         opts.system =
             "你是 EduStat 教学统计系统内置的智能 Agent，基于 DeepSeek 模型，"
             "通过 ReAct（思考 → 行动 → 观察）循环自主完成任务。\n"
@@ -646,7 +759,7 @@ void AgentBackend::runAgent(const QString& userText) {
                     emit self->chatStateChanged();
                 }, Qt::QueuedConnection);
             }
-            return;
+            return true;  // stopped by user = not an error
         }
 
         if (self) {
@@ -685,6 +798,51 @@ void AgentBackend::runAgent(const QString& userText) {
                 self->streaming_ = false;
                 self->saveStore();
                 self->refreshSessions();
+                emit self->chatStateChanged();
+            }, Qt::QueuedConnection);
+        }
+        return true;  // success
+        };  // end doAgentRun
+
+        // --- Execute with SIGSEGV + exception protection; retry once ---
+        // On failure, feed error back to AI so it can correct itself
+        std::vector<ai::Message> msgs = aiMsgs;  // mutable copy for retries
+        bool ok = false;
+        std::string lastError;
+        for (int attempt = 0; attempt < 2 && !ok; ++attempt) {
+            if (attempt > 0) {
+                qDebug() << "[AgentBackend] Agent retry" << attempt
+                         << "with error context fed to AI...";
+                msgs.push_back(ai::Message::user(
+                    "[系统通知] 上一次执行遇到了内部错误（" + lastError +
+                    "），请忽略上次的失败结果，继续完成用户的任务。"));
+            }
+            g_segv_ready = true;
+            if (sigsetjmp(g_segv_jmp, 1) == 0) {
+                try {
+                    ok = doAgentRun(msgs);
+                    if (!ok) lastError = "Agent returned failure";
+                } catch (const std::exception& e) {
+                    lastError = e.what();
+                    qDebug() << "[AgentBackend] Agent exception:" << e.what();
+                } catch (...) {
+                    lastError = "unknown exception";
+                    qDebug() << "[AgentBackend] Agent unknown exception";
+                }
+            } else {
+                lastError = "SIGSEGV (memory access violation)";
+                qDebug() << "[AgentBackend] SIGSEGV caught, thread recovered";
+            }
+            g_segv_ready = false;
+        }
+
+        if (!ok && self) {
+            QMetaObject::invokeMethod(self, [self, lastError]() {
+                if (!self) return;
+                self->loading_ = false;
+                self->streaming_ = false;
+                emit self->errorOccurred(QString::fromStdString(
+                    "Agent 重试两次均失败: " + lastError));
                 emit self->chatStateChanged();
             }, Qt::QueuedConnection);
         }
@@ -741,6 +899,7 @@ void AgentBackend::emitCurrentHistory() {
 void AgentBackend::saveStore() {
     json root;
     root["active_id"] = current_session_id_.toStdString();
+    root["agent_mode"] = agent_mode_;
     json sessionsArr = json::array();
 
     for (const auto& s : sessions_) {
@@ -783,6 +942,10 @@ void AgentBackend::loadStore() {
     auto activeIt = root.find("active_id");
     if (activeIt != root.end() && activeIt->is_string()) {
         current_session_id_ = QString::fromStdString(activeIt->get<std::string>());
+    }
+
+    if (auto it = root.find("agent_mode"); it != root.end() && it->is_boolean()) {
+        agent_mode_ = it->get<bool>();
     }
 
     auto sessionsIt = root.find("sessions");
