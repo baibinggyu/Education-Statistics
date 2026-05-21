@@ -5,7 +5,7 @@
 
 #include <cstdlib>
 
-#include "chat_backend.h"
+#include "agent_backend.h"
 
 static void configureInputMethod()
 {
@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
     app.setApplicationName("EduStat 2.0 教学统计系统");
     app.setOrganizationName("Edu");
 
-    qmlRegisterType<ChatBackend>("EduStat.Backend", 1, 0, "ChatBackend");
+    qmlRegisterType<AgentBackend>("EduStat.Backend", 1, 0, "AgentBackend");
 
     QQmlApplicationEngine engine;
     engine.addImportPath(QCoreApplication::applicationDirPath());
