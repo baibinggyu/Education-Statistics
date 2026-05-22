@@ -1,10 +1,26 @@
 import QtQuick
 import QtQuick.Layouts
 import FluentUI
+import EduStat.Backend 1.0
 
 // 登录 Login Page
 Item {
     signal login()
+
+    property string errorMessage: ""
+
+    ApiClient {
+        id: apiClient
+
+        onLoginSuccess: function(token, role) {
+            loginPage.errorMessage = ""
+            loginPage.login()
+        }
+
+        onLoginError: function(msg) {
+            loginPage.errorMessage = msg
+        }
+    }
 
     Rectangle {
         anchors.fill: parent
@@ -57,6 +73,7 @@ Item {
                             textColor: FluTheme.dark ? "#b3c0c8" : "#555555"
                         }
                         FluTextBox {
+                            id: usernameField
                             Layout.fillWidth: true
                             placeholderText: "请输入用户名"
                             Layout.preferredHeight: 42
@@ -71,23 +88,19 @@ Item {
                             textColor: FluTheme.dark ? "#b3c0c8" : "#555555"
                         }
                         FluPasswordBox {
+                            id: passwordField
                             Layout.fillWidth: true
                             placeholderText: "请输入密码"
                             Layout.preferredHeight: 42
                         }
                     }
 
-                    RowLayout {
-                        FluToggleSwitch { checked: true }
-                        FluText {
-                            text: "记住密码"
-                            font.pixelSize: 12
-                        }
-                        Item { Layout.fillWidth: true }
-                        FluTextButton {
-                            text: "忘记密码？"
-                            font.pixelSize: 12
-                        }
+                    FluText {
+                        text: loginPage.errorMessage
+                        visible: loginPage.errorMessage !== ""
+                        color: "#ef4444"
+                        font.pixelSize: 12
+                        Layout.fillWidth: true
                     }
 
                     FluFilledButton {
@@ -96,7 +109,10 @@ Item {
                         text: "登  录"
                         font.pixelSize: 15
                         font.bold: true
-                        onClicked: login()
+                        onClicked: {
+                            loginPage.errorMessage = ""
+                            apiClient.login(usernameField.text, passwordField.text)
+                        }
                     }
                 }
             }

@@ -6,6 +6,7 @@
 #include <cstdlib>
 
 #include "agent_backend.h"
+#include "api_client.h"
 
 static void configureInputMethod()
 {
@@ -32,6 +33,7 @@ int main(int argc, char *argv[])
     app.setOrganizationName("Edu");
 
     qmlRegisterType<AgentBackend>("EduStat.Backend", 1, 0, "AgentBackend");
+    qmlRegisterType<ApiClient>("EduStat.Backend", 1, 0, "ApiClient");
 
     QQmlApplicationEngine engine;
     engine.addImportPath(QCoreApplication::applicationDirPath());

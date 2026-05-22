@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Quick Qml Widgets Concurrent)
+find_package(Qt6 REQUIRED COMPONENTS Core Quick Qml Widgets Concurrent Network)
 
 # ai-sdk-cpp
 set(AI_SDK_DIR /home/bai-yu/cpp-external/ai-sdk-cpp)
@@ -22,6 +22,7 @@ qt_policy(SET QTP0004 OLD)
 qt_add_executable(EduStat_qml
     main.cpp
     agent_backend.cpp
+    api_client.cpp
 )
 
 qt_add_qml_module(EduStat_qml
@@ -51,6 +52,7 @@ target_link_libraries(EduStat_qml PRIVATE
     Qt6::Qml
     Qt6::Widgets
     Qt6::Concurrent
+    Qt6::Network
     ai::core
     ai::openai
     ai::anthropic
@@ -62,3 +64,11 @@ add_custom_command(TARGET EduStat_qml POST_BUILD
     ${CMAKE_SOURCE_DIR}/FluentUI
     $<TARGET_FILE_DIR:EduStat_qml>/FluentUI
 )
+
+# ---- Tests ----
+option(BUILD_EDUSTAT_TESTS "Build EduStat ApiClient tests" ON)
+if(BUILD_EDUSTAT_TESTS)
+    enable_testing()
+    find_package(Qt6 REQUIRED COMPONENTS Test)
+    add_subdirectory(tests)
+endif()
