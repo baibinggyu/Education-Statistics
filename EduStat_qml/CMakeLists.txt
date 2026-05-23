@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Quick Qml Widgets Concurrent Network)
+find_package(Qt6 REQUIRED COMPONENTS Core Quick Qml Widgets Concurrent Network Multimedia MultimediaWidgets)
 
 # ai-sdk-cpp
 set(AI_SDK_DIR /home/bai-yu/cpp-external/ai-sdk-cpp)
@@ -23,6 +23,8 @@ qt_add_executable(EduStat_qml
     main.cpp
     agent_backend.cpp
     api_client.cpp
+    video_player_proxy.cpp
+    VideoPlayer.cpp
 )
 
 qt_add_qml_module(EduStat_qml
@@ -44,6 +46,8 @@ qt_add_qml_module(EduStat_qml
         qml_ui/CountdownPage.qml
         qml_ui/MessagePage.qml
         qml_ui/ChatPage.qml
+    RESOURCES
+        sounds/alarm.wav
 )
 
 target_link_libraries(EduStat_qml PRIVATE
@@ -53,6 +57,8 @@ target_link_libraries(EduStat_qml PRIVATE
     Qt6::Widgets
     Qt6::Concurrent
     Qt6::Network
+    Qt6::Multimedia
+    Qt6::MultimediaWidgets
     ai::core
     ai::openai
     ai::anthropic

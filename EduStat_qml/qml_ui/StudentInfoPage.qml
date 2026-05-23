@@ -1,59 +1,204 @@
 import QtQuick
 import QtQuick.Layouts
 import FluentUI
+import EduStat.Backend 1.0
 
 // 学生信息 Student Info Page
 Item {
+    required property ApiClient requiredApiClient
+    required property string requiredCourseUuid
+
+    property var summaryData: ({})
+    property var unitsData: ([])
+    property var membersRaw: ([])
+    property var scoresMap: ({})
+    property var unitNames: []
+    property var unitIds: []
+    property string searchTerm: ""
+    property bool membersLoaded: false
+    property bool scoresLoaded: false
+    // Track which cell is being edited: {rowIndex, unitId}
+    property var editingCell: null
+
+    Component.onCompleted: {
+        if (requiredCourseUuid) refreshData()
+    }
+
+    function refreshData() {
+        if (!requiredCourseUuid) return
+        membersLoaded = false
+        scoresLoaded = false
+        membersRaw = []
+        scoresMap = ({})
+        unitsData = []
+        unitNames = []
+        unitIds = []
+        editingCell = null
+        requiredApiClient.fetchCourseMembers(requiredCourseUuid)
+        requiredApiClient.fetchScoreSummary(requiredCourseUuid)
+        requiredApiClient.fetchUnits(requiredCourseUuid)
+    }
+
+    // Recompute unitIds when unitsData changes
+    onUnitsDataChanged: {
+        var ids = []
+        for (var i = 0; i < unitsData.length; i++) {
+            ids.push(unitsData[i].id)
+        }
+        unitIds = ids
+    }
+
+    Connections {
+        target: requiredApiClient
+
+        function onCourseMembersReset() { membersRaw = [] }
+        function onCourseMemberListed(userUuid, username, memberRole, joinedAt, studentNo, realName) {
+            if (memberRole === "student") {
+                membersRaw.push({
+                    user_uuid: userUuid,
+                    username: username,
+                    student_no: studentNo || "",
+                    real_name: realName || ""
+                })
+            }
+        }
+        function onCourseMembersListDone() {
+            membersLoaded = true
+            membersRawChanged()
+        }
+
+        function onScoreSummaryFetched(summary) {
+            summaryData = summary
+            var map = ({})
+            var students = summary.students || []
+            for (var i = 0; i < students.length; i++) {
+                var s = students[i]
+                map[s.student_uuid] = {
+                    student_no: s.student_no || "",
+                    real_name: s.real_name || "",
+                    scores: s.scores || [],
+                    weighted_total: s.weighted_total,
+                    rank: s.rank
+                }
+            }
+            scoresMap = map
+            scoresLoaded = true
+            if (unitNames.length === 0 && summary.unit_names) {
+                unitNames = summary.unit_names
+            }
+        }
+        function onScoreSummaryError(msg) {
+            scoresLoaded = true
+            console.log("Score summary error:", msg)
+        }
+
+        function onScoreUpserted(result) {
+            editingCell = null
+            refreshData()
+        }
+        function onScoreUpsertError(msg) {
+            console.log("Score upsert error:", msg)
+            editingCell = null
+        }
+
+        function onUnitListReset() { unitsData = []; unitNames = []; unitIds = [] }
+        function onUnitListed(id, name, weight, fullScore, order) {
+            unitsData.push({id: id, name: name, weight: weight, fullScore: fullScore, order: order})
+            unitNames.push(name)
+            unitIds.push(id)
+            unitNamesChanged()
+            unitIdsChanged()
+        }
+    }
+
+    // Merge members with scores + embed student_uuid into score entries for editing
+    property var studentsData: {
+        var result = []
+        for (var i = 0; i < membersRaw.length; i++) {
+            var m = membersRaw[i]
+            var scoreEntry = scoresMap[m.user_uuid] || null
+            var rawScores = scoreEntry ? scoreEntry.scores : []
+            var scoreEntries = []
+            for (var j = 0; j < unitIds.length; j++) {
+                var us = unitsData[j]
+                scoreEntries.push({
+                    unit_id: unitIds[j],
+                    value: (j < rawScores.length && rawScores[j] !== null) ? rawScores[j] : null,
+                    student_uuid: m.user_uuid,
+                    row_index: i,
+                    full_score: (us && us.fullScore) ? us.fullScore : 100
+                })
+            }
+            result.push({
+                user_uuid: m.user_uuid,
+                username: m.username,
+                student_no: (scoreEntry && scoreEntry.student_no) ? scoreEntry.student_no : m.student_no,
+                real_name: (scoreEntry && scoreEntry.real_name) ? scoreEntry.real_name : (m.real_name || m.username),
+                scoreEntries: scoreEntries,
+                weighted_total: scoreEntry ? scoreEntry.weighted_total : null,
+                rank: scoreEntry ? scoreEntry.rank : null
+            })
+        }
+        return result
+    }
+
+    property var filteredStudents: {
+        if (!searchTerm) return studentsData
+        var term = searchTerm.toLowerCase()
+        return studentsData.filter(function(s) {
+            return (s.student_no || "").toLowerCase().includes(term) ||
+                   (s.real_name || "").toLowerCase().includes(term) ||
+                   (s.username || "").toLowerCase().includes(term)
+        })
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 16
 
-        // Title
         FluText {
             text: "学生信息"
             font.pixelSize: 18
             font.bold: true
         }
 
-        // Toolbar
         RowLayout {
             Layout.fillWidth: true
             spacing: 10
 
             FluFilledButton {
-                text: "+ 新增"
+                text: "刷新"
                 font.pixelSize: 12
+                onClicked: refreshData()
             }
-            FluButton {
-                text: "- 删除选中"
-                font.pixelSize: 12
-            }
-            Item { Layout.preferredWidth: 20 }
+            Item { Layout.preferredWidth: 10 }
             FluTextBox {
                 id: searchBox
                 Layout.fillWidth: true
                 Layout.preferredWidth: 200
-                placeholderText: "搜索学生姓名 / 学号..."
-            }
-            FluButton {
-                text: "搜索"
-                font.pixelSize: 12
+                placeholderText: "搜索学生姓名 / 学号 / 用户名..."
+                onTextChanged: searchTerm = text
             }
             FluButton {
                 text: "导出"
                 font.pixelSize: 12
             }
-            FluButton {
-                text: "导入学生信息"
-                font.pixelSize: 12
-            }
-            FluButton {
-                text: "保存"
-                font.pixelSize: 12
-            }
         }
 
-        // Table
+        FluText {
+            text: {
+                var total = studentsData.length
+                var filtered = filteredStudents.length
+                var base = "共 " + total + " 名学生"
+                if (filtered !== total) base += "，筛选结果 " + filtered + " 人"
+                base += " · 单元数：" + (unitNames.length > 0 ? unitNames.length : (summaryData.unit_names ? summaryData.unit_names.length : 0))
+                if (!membersLoaded || !scoresLoaded) base += " · 加载中..."
+                return base
+            }
+            font.pixelSize: 11
+            textColor: "#8ea1ad"
+        }
+
         FluFrame {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -77,28 +222,37 @@ Item {
                         anchors.rightMargin: 14
                         spacing: 0
 
+                        FluText { Layout.preferredWidth: 110; text: "学号"; font.pixelSize: 11; font.bold: true }
+                        FluText { Layout.preferredWidth: 72; text: "姓名"; font.pixelSize: 11; font.bold: true }
+                        FluText { Layout.preferredWidth: 110; text: "用户名"; font.pixelSize: 11; font.bold: true }
                         Repeater {
-                            model: ["学号", "班级", "姓名", "第一章", "第二章", "第三章", "第四章"]
+                            model: unitNames
                             delegate: FluText {
                                 Layout.fillWidth: true
                                 text: modelData
                                 font.pixelSize: 11
                                 font.bold: true
-                                horizontalAlignment: index >= 3 ? Text.AlignRight : Text.AlignLeft
+                                horizontalAlignment: Text.AlignRight
                             }
                         }
+                        FluText { Layout.preferredWidth: 70; text: "加权总分"; font.pixelSize: 11; font.bold: true; horizontalAlignment: Text.AlignRight }
+                        FluText { Layout.preferredWidth: 44; text: "排名"; font.pixelSize: 11; font.bold: true; horizontalAlignment: Text.AlignRight }
                     }
                 }
 
                 // Table rows
                 ListView {
+                    id: studentList
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
-                    model: 12
+                    model: filteredStudents
 
                     delegate: Rectangle {
-                        width: ListView.view.width
+                        id: rowDelegate
+                        required property var modelData
+                        required property int index
+                        width: studentList.width
                         height: 40
                         color: index % 2 === 0 ? "transparent" : Qt.rgba(0,0,0,0.04)
                         radius: 4
@@ -109,25 +263,162 @@ Item {
                             anchors.rightMargin: 14
                             spacing: 0
 
+                            // Copyable: 学号
+                            TextEdit {
+                                Layout.preferredWidth: 110
+                                text: modelData.student_no || "--"
+                                font { pixelSize: 11; family: "Source Han Sans CN, Noto Sans CJK TC, sans-serif" }
+                                color: "#e0e0e0"
+                                readOnly: true
+                                selectByMouse: true
+                                verticalAlignment: Text.AlignVCenter
+                                padding: 0
+                            }
+                            // Copyable: 姓名
+                            TextEdit {
+                                Layout.preferredWidth: 72
+                                text: modelData.real_name || "--"
+                                font { pixelSize: 11; family: "Source Han Sans CN, Noto Sans CJK TC, sans-serif" }
+                                color: "#e0e0e0"
+                                readOnly: true
+                                selectByMouse: true
+                                verticalAlignment: Text.AlignVCenter
+                                padding: 0
+                            }
+                            // Copyable: 用户名
+                            TextEdit {
+                                Layout.preferredWidth: 110
+                                text: modelData.username || "--"
+                                font { pixelSize: 11; family: "Source Han Sans CN, Noto Sans CJK TC, sans-serif" }
+                                color: "#8ea1ad"
+                                readOnly: true
+                                selectByMouse: true
+                                verticalAlignment: Text.AlignVCenter
+                                padding: 0
+                            }
+
+                            // Score cells (editable inline)
                             Repeater {
-                                model: [
-                                    "202400" + (index + 1),
-                                    index < 5 ? "师范一班" : (index < 9 ? "师范二班" : "师范三班"),
-                                    ["张同学","李同学","王同学","赵同学","钱同学","孙同学","周同学","吴同学","郑同学","陈同学","刘同学","黄同学"][index],
-                                    (70 + Math.floor(Math.random() * 30)).toString(),
-                                    (70 + Math.floor(Math.random() * 30)).toString(),
-                                    (70 + Math.floor(Math.random() * 30)).toString(),
-                                    (70 + Math.floor(Math.random() * 30)).toString()
-                                ]
-                                delegate: FluText {
+                                model: modelData.scoreEntries || []
+                                delegate: Rectangle {
+                                    required property var modelData  // {unit_id, value, student_uuid, row_index}
+                                    property bool isEditing: {
+                                        var ec = editingCell
+                                        return ec !== null && ec.rowIndex === modelData.row_index && ec.unitId === modelData.unit_id
+                                    }
+                                    property real cellScore: modelData.value !== null ? modelData.value : NaN
+
                                     Layout.fillWidth: true
-                                    text: modelData
-                                    font.pixelSize: 11
-                                    horizontalAlignment: index >= 3 ? Text.AlignRight : Text.AlignLeft
+                                    Layout.preferredHeight: 40
+                                    color: isEditing ? Qt.rgba(15/255, 118/255, 110/255, 0.2) : "transparent"
+                                    radius: 3
+
+                                    FluText {
+                                        id: scoreDisplay
+                                        visible: !parent.isEditing
+                                        anchors.centerIn: parent
+                                        text: isNaN(parent.cellScore) ? "--" : parent.cellScore.toFixed(1)
+                                        font.pixelSize: 11
+                                    }
+
+                                    FluTextBox {
+                                        id: scoreEdit
+                                        visible: parent.isEditing
+                                        anchors.fill: parent
+                                        anchors.margins: 1
+                                        font.pixelSize: 11
+                                        text: isNaN(parent.cellScore) ? "" : parent.cellScore.toString()
+                                        verticalAlignment: Text.AlignVCenter
+
+                                        property real fullScore: modelData.full_score !== undefined ? modelData.full_score : 100
+                                        property bool scoreValid: {
+                                            var v = parseFloat(text)
+                                            if (isNaN(v)) return text === ""
+                                            return v >= 0 && v <= fullScore
+                                        }
+                                        property bool scoreDirty: text !== "" && text !== (isNaN(parent.cellScore) ? "" : parent.cellScore.toString())
+
+                                        // Invalid indicator via border
+                                        Rectangle {
+                                            anchors.fill: parent
+                                            color: "transparent"
+                                            border.width: parent.scoreDirty && !parent.scoreValid ? 2 : 0
+                                            border.color: "#ef4444"
+                                            radius: 4
+                                        }
+
+                                        Keys.onReturnPressed: {
+                                            if (!scoreValid) return
+                                            var v = parseFloat(text)
+                                            if (!isNaN(v) && text !== "") {
+                                                requiredApiClient.upsertScore(
+                                                    requiredCourseUuid,
+                                                    modelData.student_uuid,
+                                                    modelData.unit_id,
+                                                    v
+                                                )
+                                            } else {
+                                                editingCell = null
+                                            }
+                                        }
+                                        Keys.onEscapePressed: {
+                                            editingCell = null
+                                        }
+                                        onActiveFocusChanged: {
+                                            if (!activeFocus && parent.isEditing) {
+                                                editingCell = null
+                                            }
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        hoverEnabled: true
+                                        onClicked: {
+                                            if (!isEditing) {
+                                                editingCell = {rowIndex: modelData.row_index, unitId: modelData.unit_id}
+                                                scoreEdit.forceActiveFocus()
+                                                scoreEdit.selectAll()
+                                            }
+                                        }
+                                    }
                                 }
+                            }
+
+                            FluText {
+                                Layout.preferredWidth: 70
+                                text: modelData.weighted_total != null ? modelData.weighted_total.toFixed(1) : "--"
+                                font.pixelSize: 11
+                                font.bold: true
+                                horizontalAlignment: Text.AlignRight
+                            }
+                            FluText {
+                                Layout.preferredWidth: 44
+                                text: modelData.rank != null ? modelData.rank.toString() : "--"
+                                font.pixelSize: 11
+                                textColor: modelData.rank <= 3 ? "#0f766e" : "#b3c0c8"
+                                font.bold: modelData.rank <= 3
+                                horizontalAlignment: Text.AlignRight
                             }
                         }
                     }
+                }
+
+                FluText {
+                    visible: filteredStudents.length === 0 && membersLoaded && scoresLoaded
+                    Layout.alignment: Qt.AlignCenter
+                    text: studentsData.length === 0 ? "该课程暂无学生" : "无匹配结果"
+                    font.pixelSize: 13
+                    textColor: "#53636d"
+                }
+
+                FluText {
+                    visible: !membersLoaded || !scoresLoaded
+                    Layout.alignment: Qt.AlignCenter
+                    text: "加载中..."
+                    font.pixelSize: 13
+                    textColor: "#8ea1ad"
                 }
             }
         }

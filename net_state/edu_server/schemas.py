@@ -12,6 +12,8 @@ class UserCreate(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=128)
     role: str = Field(default="student", pattern="^(student|teacher|admin)$")
+    student_no: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    real_name: Optional[str] = Field(default=None, min_length=1, max_length=64)
 
 
 class UserLogin(BaseModel):
@@ -87,6 +89,10 @@ class UserPageOut(BaseModel):
 class StudentBind(BaseModel):
     student_no: str = Field(min_length=1, max_length=64)
     real_name: str = Field(min_length=1, max_length=64)
+
+
+class StudentBindWithUuid(StudentBind):
+    user_uuid: str
 
 
 class StudentBriefOut(BaseModel):

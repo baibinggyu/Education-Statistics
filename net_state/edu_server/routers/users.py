@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from database import get_db
-from deps import get_current_user
+from deps import get_current_user, require_admin
 from models import Student, User
-from schemas import StudentBind, StudentBriefOut, UserMeOut, UserUpdate
+from schemas import StudentBind, StudentBindWithUuid, StudentBriefOut, UserMeOut, UserUpdate
 
 router = APIRouter()
 
@@ -98,3 +98,47 @@ def bind_student(
     db.refresh(student)
 
     return get_me(db=db, current_user=current_user)
+
+
+# ============================================================
+# Admin: 为学生设置学籍信息
+# ============================================================
+
+@router.put("/admin/student-profile")
+def admin_batch_set_student_profile(
+    data: list[StudentBindWithUuid],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """管理员批量设置用户的学生档案（学号、姓名）。"""
+    results = []
+    for item in data:
+        user = db.query(User).filter(User.uuid == item.user_uuid).first()
+        if not user:
+            results.append({"user_uuid": item.user_uuid, "status": "user not found"})
+            continue
+
+        # 检查学号唯一性（排除当前用户）
+        dup = db.query(Student).filter(
+            Student.student_no == item.student_no,
+            Student.user_id != user.id,
+        ).first()
+        if dup:
+            results.append({"user_uuid": item.user_uuid, "status": "student_no conflict"})
+            continue
+
+        student = db.query(Student).filter(Student.user_id == user.id).first()
+        if student:
+            student.student_no = item.student_no
+            student.real_name = item.real_name
+        else:
+            student = Student(
+                user_id=user.id,
+                student_no=item.student_no,
+                real_name=item.real_name,
+            )
+            db.add(student)
+        results.append({"user_uuid": item.user_uuid, "status": "ok"})
+
+    db.commit()
+    return {"results": results}

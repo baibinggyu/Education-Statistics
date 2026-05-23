@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User
+from models import Student, User
 from schemas import TokenOut, UserCreate, UserLogin, UserOut
 from security import create_access_token, hash_password, verify_password
 
@@ -30,6 +30,16 @@ def register_user(data: UserCreate, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    # 学生角色自动创建 Student 记录（学号+姓名）
+    if data.role == "student" and data.student_no:
+        student = Student(
+            user_id=user.id,
+            student_no=data.student_no,
+            real_name=data.real_name or "",
+        )
+        db.add(student)
+        db.commit()
 
     return user
 
