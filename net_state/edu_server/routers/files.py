@@ -6,7 +6,7 @@
 import os
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -45,7 +45,8 @@ def _ensure_dir(path: str):
 @router.post("/upload/video", response_model=FileUploadOut, status_code=status.HTTP_201_CREATED)
 async def upload_video(
     file: UploadFile,
-    course_uuid: str,
+    course_uuid: str = Form(...),
+    title: str = Form(""),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin),
 ):
