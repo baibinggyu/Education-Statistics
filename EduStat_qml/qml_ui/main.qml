@@ -20,6 +20,91 @@ ApplicationWindow {
 
     property int currentPage: 0
     property bool loggedIn: false
+    property string currentCourseUuid: ""
+    property var currentCourseData: ({})
+
+    // ========== SINGLETON API CLIENT ==========
+    ApiClient {
+        id: apiClient
+
+        onLoginSuccess: function(token, role) {
+            appWindow.loggedIn = true
+            apiClient.listCourses()
+        }
+
+        onTokenExpired: {
+            appWindow.loggedIn = false
+            appWindow.currentPage = 0
+        }
+    }
+
+    // ========== DYNAMIC COURSE MODEL ==========
+    ListModel { id: courseModel }
+
+    // Debounce timer: restores ComboBox selection after listCourses() completes
+    Timer {
+        id: restoreCourseTimer
+        interval: 30
+        onTriggered: {
+            if (courseModel.count === 0) return
+            var found = -1
+            if (appWindow.currentCourseUuid !== "") {
+                for (var i = 0; i < courseModel.count; i++) {
+                    if (courseModel.get(i).uuid === appWindow.currentCourseUuid) {
+                        found = i
+                        break
+                    }
+                }
+            }
+            if (found >= 0) {
+                courseSelector.currentIndex = found
+            } else {
+                courseSelector.currentIndex = 0
+                var item = courseModel.get(0)
+                appWindow.currentCourseUuid = item.uuid
+                appWindow.currentCourseData = item
+            }
+        }
+    }
+
+    Connections {
+        target: apiClient
+        function onCourseListReset() {
+            courseModel.clear()
+            restoreCourseTimer.stop()
+        }
+        function onCourseListed(uuid, name, description, status, memberCount, myRole) {
+            courseModel.append({
+                uuid: uuid,
+                name: name,
+                description: description,
+                status: status,
+                memberCount: memberCount,
+                myRole: myRole
+            })
+            restoreCourseTimer.restart()
+        }
+        function onCourseDeleted(uuid) {
+            var wasSelected = (uuid === appWindow.currentCourseUuid)
+            for (var i = 0; i < courseModel.count; i++) {
+                if (courseModel.get(i).uuid === uuid) {
+                    courseModel.remove(i)
+                    break
+                }
+            }
+            if (wasSelected) {
+                if (courseModel.count > 0) {
+                    courseSelector.currentIndex = 0
+                    var item = courseModel.get(0)
+                    appWindow.currentCourseUuid = item.uuid
+                    appWindow.currentCourseData = item
+                } else {
+                    appWindow.currentCourseUuid = ""
+                    appWindow.currentCourseData = ({})
+                }
+            }
+        }
+    }
 
     // ========== LOGIN SCREEN ==========
     Loader {
@@ -73,10 +158,19 @@ ApplicationWindow {
                     Layout.bottomMargin: 8
                 }
                 FluComboBox {
+                    id: courseSelector
                     Layout.fillWidth: true
                     Layout.bottomMargin: 20
-                    model: ["电子技术基础", "学科教学设计"]
-                    currentIndex: 0
+                    textRole: "name"
+                    valueRole: "uuid"
+                    model: courseModel
+                    onActivated: {
+                        if (currentIndex >= 0) {
+                            var item = courseModel.get(currentIndex)
+                            appWindow.currentCourseUuid = item.uuid
+                            appWindow.currentCourseData = item
+                        }
+                    }
                 }
 
                 FluText {
@@ -132,6 +226,14 @@ ApplicationWindow {
 
                 Item { Layout.fillHeight: true }
 
+                // Logout button
+                FluTextButton {
+                    text: "退出登录"
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.bottomMargin: 8
+                    onClicked: apiClient.logout()
+                }
+
                 FluText {
                     text: "EduStat v2.0"
                     font.pixelSize: 9
@@ -169,7 +271,7 @@ ApplicationWindow {
     // ===== NAV ITEMS =====
     property var navItems: [
         "班级信息", "点名", "组队", "学生信息",
-        "学科管理", "增加学科", "开课申请",
+        "学科管理", "开课申请",
         "视频播放", "课程资源", "发布公告",
         "倒计时", "发消息", "AI 助手"
     ]
@@ -177,23 +279,26 @@ ApplicationWindow {
     // ===== PAGE COMPONENTS =====
     property var pageComps: [
         classInfoComp, rollCallComp, teamUpComp,
-        studentInfoComp, subjectManageComp, addSubjectComp,
+        studentInfoComp, subjectManageComp,
         courseAppComp, videoPlayerComp, resourceComp,
         announcementComp, countdownComp, messageComp, chatComp
     ]
 
-    Component { id: loginComp; LoginPage { onLogin: loggedIn = true } }
-    Component { id: classInfoComp; ClassInfoPage {} }
-    Component { id: rollCallComp; RollCallPage {} }
-    Component { id: teamUpComp; TeamUpPage {} }
-    Component { id: studentInfoComp; StudentInfoPage {} }
-    Component { id: subjectManageComp; SubjectManagePage {} }
-    Component { id: addSubjectComp; AddSubjectPage {} }
-    Component { id: courseAppComp; CourseApplicationPage {} }
-    Component { id: videoPlayerComp; VideoPlayerPage {} }
-    Component { id: resourceComp; ResourcePage {} }
-    Component { id: announcementComp; AnnouncementPage {} }
+    Component {
+        id: loginComp
+        LoginPage { requiredApiClient: apiClient }
+    }
+    Component { id: classInfoComp; ClassInfoPage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }
+    Component { id: rollCallComp; RollCallPage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }
+    Component { id: teamUpComp; TeamUpPage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }
+    Component { id: studentInfoComp; StudentInfoPage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }
+    Component { id: subjectManageComp; SubjectManagePage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }
+
+    Component { id: courseAppComp; CourseApplicationPage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }
+    Component { id: videoPlayerComp; VideoPlayerPage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }
+    Component { id: resourceComp; ResourcePage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }
+    Component { id: announcementComp; AnnouncementPage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }
     Component { id: countdownComp; CountdownPage {} }
-    Component { id: messageComp; MessagePage {} }
-    Component { id: chatComp; ChatPage {} }
+    Component { id: messageComp; MessagePage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }
+    Component { id: chatComp; ChatPage { requiredApiClient: apiClient } }
 }

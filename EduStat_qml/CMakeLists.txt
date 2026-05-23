@@ -37,7 +37,7 @@ qt_add_qml_module(EduStat_qml
         qml_ui/TeamUpPage.qml
         qml_ui/StudentInfoPage.qml
         qml_ui/SubjectManagePage.qml
-        qml_ui/AddSubjectPage.qml
+
         qml_ui/CourseApplicationPage.qml
         qml_ui/LoginPage.qml
         qml_ui/VideoPlayerPage.qml

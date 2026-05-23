@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtCore
 import FluentUI
 import EduStat.Backend 1.0
 
@@ -19,7 +20,21 @@ Item {
     property int groupMode: 0  // 0=随机, 1=强配弱平衡
     property bool useScores: true
 
+    // 持久化历史记录到磁盘
+    Settings {
+        id: teamSettings
+        category: "TeamUp"
+        property string savedHistory: ""
+    }
+
     Component.onCompleted: {
+        // 加载之前保存的组队历史
+        try {
+            var saved = JSON.parse(teamSettings.savedHistory || "[]")
+            if (Array.isArray(saved)) historyList = saved
+        } catch (e) {
+            historyList = []
+        }
         if (requiredCourseUuid) refreshStudents()
     }
 
@@ -165,6 +180,8 @@ Item {
         h.unshift(entry)
         if (h.length > 20) h = h.slice(0, 20)
         historyList = h
+        // 持久化到磁盘
+        teamSettings.savedHistory = JSON.stringify(h)
     }
 
     property int numGroups: teams.length
