@@ -143,17 +143,6 @@ ScrollView {
 - ScrollView needs `import QtQuick.Controls` (not just FluentUI)
 - `width: parent.width` inside ScrollView content can be unreliable; use `ScrollView.availableWidth`
 
-### player (`player/`) — Qt6/C++ Video Player
-Standalone video player with playback controls.
-
-- **Build**: `cd player && cmake -B build && cmake --build build && ./build/VideoPlayer`
-- **Dependencies**: Qt6 (Core, Gui, Widgets, Multimedia, MultimediaWidgets), CMake 3.16+, C++17
-- **Key files**: `VideoPlayer.h/cpp` (custom player class with SeekSlider, 483 lines)
-- **Features**: Play/pause, stop, seek (click-to-seek slider), speed control (0.25x-2.0x, 7 presets), volume (0-100%), fullscreen (double-click + F key), keyboard shortcuts (Space, Left/Right, Up/Down, F, Escape)
-- **Audio workaround**: Uses `pactl` shell command via QTimer to unmute PipeWire/PulseAudio sink inputs
-- **Test files**: `mov_bbb.mp4` (771 KB, Big Buck Bunny clip), `test_mute.cpp` (standalone audio debug utility, not in CMake build)
-- **Build env**: Linux, Qt 6.11.0 system-wide, CMake 4.3.2
-
 ### routing (`routing/`) — edu_server FastAPI Backend + Video Streaming
 
 Full REST API backend with JWT auth, role-based access control, and MariaDB persistence.
@@ -285,7 +274,7 @@ Single-file static landing page presenting the entire edu monorepo.
   - Hero section with decorative CSS geometry and gradient text
   - 6 feature cards with hover animations (data analysis, video streaming, mobile learning, AI, data architecture, modular design)
   - Animated statistics counters (5 subprojects, 4 tech stacks, 8 DB tables, Qt 6 core)
-  - 5 subproject cards (EduStat, Video Player, Routing, Edu PE, Database)
+  - 5 subproject cards (EduStat, EduStat_qml, Routing, Edu PE, Database)
   - Technology stack tags (16 pills: C++17, Qt, CMake, Python, FastAPI, MariaDB, JWT, etc.)
   - Scroll animations via IntersectionObserver, scroll progress bar via requestAnimationFrame
 - **Fonts**: System font stack optimized for Chinese rendering (PingFang SC, Hiragino Sans GB, Microsoft YaHei)
