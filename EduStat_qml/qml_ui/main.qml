@@ -16,10 +16,14 @@ ApplicationWindow {
     Component.onCompleted: {
         FluTheme.darkMode = 2
         FluTheme.primaryColor = "#0f766e"
+        // Attempt auto-login if saved credentials exist
+        autoLoginInProgress = true
+        apiClient.tryAutoLogin()
     }
 
     property int currentPage: 0
     property bool loggedIn: false
+    property bool autoLoginInProgress: false
     property string currentCourseUuid: ""
     property var currentCourseData: ({})
 
@@ -28,8 +32,23 @@ ApplicationWindow {
         id: apiClient
 
         onLoginSuccess: function(token, role) {
+            appWindow.autoLoginInProgress = false
             appWindow.loggedIn = true
             apiClient.listCourses()
+        }
+
+        onLoginError: function(msg) {
+            appWindow.autoLoginInProgress = false
+        }
+
+        onAutoLoginSkipped: function(reason) {
+            appWindow.autoLoginInProgress = false
+            console.log("Auto-login skipped:", reason)
+        }
+
+        onAuthenticatedChanged: {
+            if (!apiClient.authenticated)
+                appWindow.loggedIn = false
         }
 
         onTokenExpired: {
@@ -111,6 +130,13 @@ ApplicationWindow {
         anchors.fill: parent
         active: !loggedIn
         sourceComponent: loginComp
+    }
+
+    // ========== AUTO-LOGIN LOADING OVERLAY ==========
+    Loader {
+        anchors.fill: parent
+        active: autoLoginInProgress && !loggedIn
+        sourceComponent: autoLoginLoadingComp
     }
 
     // ========== MAIN APP ==========
@@ -251,18 +277,25 @@ ApplicationWindow {
         }
 
         // ===== CONTENT =====
+        // 所有页面常驻内存，通过 visible 切换，避免 ChatPage 等页面状态丢失
+        // StudentInfoPage / SubjectManagePage 在切换时主动刷新数据
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             color: FluTheme.dark ? Qt.rgba(32/255, 35/255, 40/255, 1) : "#f5f5f5"
 
-            Loader {
+            Item {
                 anchors.fill: parent
                 anchors.margins: 24
-                sourceComponent: {
-                    if (appWindow.currentPage >= 0 && appWindow.currentPage < pageComps.length)
-                        return pageComps[appWindow.currentPage]
-                    return null
+
+                Repeater {
+                    model: pageComps.length
+                    Loader {
+                        anchors.fill: parent
+                        active: true
+                        visible: index === appWindow.currentPage
+                        sourceComponent: pageComps[index]
+                    }
                 }
             }
         }
@@ -285,13 +318,34 @@ ApplicationWindow {
     ]
 
     Component {
+        id: autoLoginLoadingComp
+        Rectangle {
+            anchors.fill: parent
+            color: FluTheme.dark ? Qt.rgba(22/255, 25/255, 30/255, 1) : "#e8ecf0"
+            ColumnLayout {
+                anchors.centerIn: parent
+                spacing: 20
+                FluProgressRing {
+                    Layout.alignment: Qt.AlignHCenter
+                }
+                FluText {
+                    text: "正在自动登录..."
+                    font.pixelSize: 14
+                    textColor: FluTheme.dark ? "#8ea1ad" : "#666666"
+                    Layout.alignment: Qt.AlignHCenter
+                }
+            }
+        }
+    }
+
+    Component {
         id: loginComp
         LoginPage { requiredApiClient: apiClient }
     }
     Component { id: classInfoComp; ClassInfoPage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }
     Component { id: rollCallComp; RollCallPage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }
     Component { id: teamUpComp; TeamUpPage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }
-    Component { id: studentInfoComp; StudentInfoPage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }
+    Component { id: studentInfoComp; StudentInfoPage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid; requiredCourseName: (currentCourseData && currentCourseData.name) ? currentCourseData.name : "" } }
     Component { id: subjectManageComp; SubjectManagePage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }
 
     Component { id: courseAppComp; CourseApplicationPage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }

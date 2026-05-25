@@ -15,6 +15,14 @@ set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 add_subdirectory(${AI_SDK_DIR} ${CMAKE_BINARY_DIR}/ai-sdk-cpp EXCLUDE_FROM_ALL)
 
+# libxlsxwriter (static)
+set(LIBXLSXWRITER_DIR /home/bai-yu/cpp-external/libxlsxwriter)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(USE_STATIC_MSVC_RUNTIME ON CACHE BOOL "" FORCE)
+add_subdirectory(${LIBXLSXWRITER_DIR} ${CMAKE_BINARY_DIR}/libxlsxwriter EXCLUDE_FROM_ALL)
+
 # Suppress Qt CMake policy warnings
 qt_policy(SET QTP0001 NEW)
 qt_policy(SET QTP0004 OLD)
@@ -62,13 +70,28 @@ target_link_libraries(EduStat_qml PRIVATE
     ai::core
     ai::openai
     ai::anthropic
+    xlsxwriter
+    ZLIB::ZLIB
 )
+
+# Path to FunASR source directory (for dev; bundled alongside binary for deploy)
+set(FUNASR_SOURCE_DIR "${CMAKE_SOURCE_DIR}/../FunASR")
+add_compile_definitions(FUNASR_SOURCE_DIR="${FUNASR_SOURCE_DIR}")
 
 # Copy FluentUI plugin to build directory for runtime QML import
 add_custom_command(TARGET EduStat_qml POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_SOURCE_DIR}/FluentUI
     $<TARGET_FILE_DIR:EduStat_qml>/FluentUI
+)
+
+# Copy FunASR asr.py to build output (for subtitle feature)
+add_custom_command(TARGET EduStat_qml POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+    $<TARGET_FILE_DIR:EduStat_qml>/FunASR
+    COMMAND ${CMAKE_COMMAND} -E copy
+    ${FUNASR_SOURCE_DIR}/asr.py
+    $<TARGET_FILE_DIR:EduStat_qml>/FunASR/asr.py
 )
 
 # ---- Tests ----

@@ -17,6 +17,14 @@ Item {
         if (requiredCourseUuid) requiredApiClient.fetchCourseMembers(requiredCourseUuid)
     }
 
+    onRequiredCourseUuidChanged: {
+        if (visible && requiredCourseUuid) requiredApiClient.fetchCourseMembers(requiredCourseUuid)
+    }
+
+    onVisibleChanged: {
+        if (visible && requiredCourseUuid) requiredApiClient.fetchCourseMembers(requiredCourseUuid)
+    }
+
     Connections {
         target: requiredApiClient
         function onCourseMembersReset() { allStudents = [] }
@@ -372,67 +380,100 @@ Item {
 
                 ColumnLayout {
                     anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 6
+                    spacing: 0
 
-                    FluText {
-                        text: "本次抽取详情"
-                        font.pixelSize: 13
-                        font.bold: true
-                        visible: currentDrawResults.length > 0
+                    // Title at the very top
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 42
+                        color: "transparent"
+
+                        FluText {
+                            anchors {
+                                left: parent.left
+                                leftMargin: 16
+                                verticalCenter: parent.verticalCenter
+                            }
+                            text: "本次抽取详情"
+                            font.pixelSize: 14
+                            font.bold: true
+                            visible: currentDrawResults.length > 0
+                        }
+                        FluText {
+                            anchors.centerIn: parent
+                            text: "暂无抽取结果"
+                            font.pixelSize: 12
+                            textColor: "#53636d"
+                            visible: currentDrawResults.length === 0
+                        }
                     }
 
-                    FluText {
-                        visible: currentDrawResults.length === 0
-                        Layout.alignment: Qt.AlignCenter
-                        text: "暂无抽取结果"
-                        font.pixelSize: 12
-                        textColor: "#53636d"
-                    }
+                    FluDivider { Layout.fillWidth: true }
 
-                    Repeater {
+                    // Scrollable result list
+                    ListView {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
                         model: currentDrawResults
+                        boundsBehavior: Flickable.StopAtBounds
+
                         delegate: Rectangle {
                             required property var modelData
                             required property int index
-                            Layout.fillWidth: true
-                            height: 44
-                            radius: 8
+                            width: ListView.view.width
+                            height: 48
                             color: index % 2 === 0 ? Qt.rgba(255,255,255,0.04) : "transparent"
 
                             RowLayout {
                                 anchors.fill: parent
-                                anchors.leftMargin: 10
-                                anchors.rightMargin: 10
-                                spacing: 10
+                                anchors.leftMargin: 16
+                                anchors.rightMargin: 16
+                                spacing: 12
 
+                                // Avatar circle
                                 Rectangle {
-                                    width: 30; height: 30; radius: 15
+                                    width: 32; height: 32; radius: 16
                                     color: "#0f766e"
                                     FluText {
                                         anchors.centerIn: parent
-                                        text: (modelData.real_name || modelData.username).charAt(0)
-                                        font.pixelSize: 13
+                                        text: (modelData.real_name || modelData.username).charAt(0).toUpperCase()
+                                        font.pixelSize: 14
+                                        font.bold: true
                                         textColor: "#ffffff"
                                     }
                                 }
-                                FluText {
-                                    text: (index + 1) + "."
-                                    font.pixelSize: 11
-                                    textColor: "#6a7882"
-                                    Layout.preferredWidth: 24
-                                }
+
+                                // Name — prominent
                                 FluText {
                                     text: modelData.real_name || modelData.username
-                                    font.pixelSize: 13
+                                    font.pixelSize: 14
                                     font.bold: true
-                                    Layout.preferredWidth: 100
+                                    Layout.preferredWidth: 120
+                                    elide: Text.ElideRight
                                 }
+
+                                // Student number
                                 FluText {
-                                    text: modelData.student_no || "--"
+                                    text: modelData.student_no || ""
                                     font.pixelSize: 11
                                     textColor: "#8ea1ad"
                                     Layout.fillWidth: true
+                                    elide: Text.ElideRight
+                                }
+
+                                // Index badge
+                                Rectangle {
+                                    Layout.preferredWidth: 28
+                                    Layout.preferredHeight: 22
+                                    radius: 11
+                                    color: Qt.rgba(15/255, 118/255, 110/255, 0.2)
+                                    FluText {
+                                        anchors.centerIn: parent
+                                        text: "#" + (index + 1)
+                                        font.pixelSize: 10
+                                        textColor: "#0f766e"
+                                    }
                                 }
                             }
                         }

@@ -171,3 +171,34 @@ CREATE TABLE IF NOT EXISTS play_records (
                                             FOREIGN KEY (user_id) REFERENCES users(id),
                                             FOREIGN KEY (video_id) REFERENCES videos(id)
 );
+
+-- -------------------------------------------
+-- 考勤签到表
+-- -------------------------------------------
+CREATE TABLE IF NOT EXISTS attendances (
+                                            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                                            uuid VARCHAR(36) NOT NULL UNIQUE COMMENT '外部UUID',
+                                            course_id BIGINT NOT NULL,
+                                            created_by BIGINT NOT NULL COMMENT '发起签到的教师',
+                                            title VARCHAR(255) NOT NULL COMMENT '签到标题',
+                                            status ENUM('open','closed') NOT NULL DEFAULT 'open' COMMENT '进行中/已结束',
+                                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                            closed_at DATETIME DEFAULT NULL,
+                                            FOREIGN KEY (course_id) REFERENCES courses(id),
+                                            FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+-- -------------------------------------------
+-- 考勤记录表
+-- -------------------------------------------
+CREATE TABLE IF NOT EXISTS attendance_records (
+                                            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                                            attendance_id BIGINT NOT NULL,
+                                            student_id BIGINT NOT NULL COMMENT '学生用户ID',
+                                            status ENUM('present','absent','late','leave') NOT NULL DEFAULT 'present',
+                                            note TEXT,
+                                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                            UNIQUE KEY uk_attendance_student (attendance_id, student_id),
+                                            FOREIGN KEY (attendance_id) REFERENCES attendances(id),
+                                            FOREIGN KEY (student_id) REFERENCES users(id)
+);

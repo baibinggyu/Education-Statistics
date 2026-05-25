@@ -4,13 +4,16 @@
 """
 
 import os
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse, Response
+from jose import JWTError
 from sqlalchemy.orm import Session
 
 from database import get_db
 from deps import get_current_user, require_teacher_or_admin
+from security import decode_access_token
 from models import Course, CourseMember, PlayRecord, User, Video
 from schemas import (
     PlayProgressOut,
@@ -243,14 +246,31 @@ def delete_video(
 @router.get("/{video_uuid}/stream")
 def stream_video(
     video_uuid: str,
+    token: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ):
     """鉴权后返回视频流。
+
+    支持两种认证方式：
+    1. ?token=<jwt> 查询参数（给 QMediaPlayer 等不支持自定义头的播放器）
+    2. Authorization: Bearer <token> 头（标准 JWT）
 
     生产环境: 设置 X-Accel-Redirect 头，让 Nginx 直接发送文件。
     开发环境: 直接使用 FileResponse 发送文件（小文件场景）。
     """
+    user = None
+    if token:
+        try:
+            payload = decode_access_token(token)
+            user_uuid = payload.get("sub")
+            if user_uuid:
+                user = db.query(User).filter(User.uuid == user_uuid, User.status == 1).first()
+        except JWTError:
+            pass
+
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing token")
+
     video = (
         db.query(Video)
         .filter(Video.uuid == video_uuid, Video.status == "normal")
@@ -259,7 +279,7 @@ def stream_video(
     if video is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found")
 
-    if not _check_course_access(video.course_id, current_user, db):
+    if not _check_course_access(video.course_id, user, db):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
 
     file_path = video.file_path

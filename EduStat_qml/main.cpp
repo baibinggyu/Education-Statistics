@@ -7,6 +7,7 @@
 
 #include "agent_backend.h"
 #include "api_client.h"
+#include "video_player_proxy.h"
 
 static void configureInputMethod()
 {
@@ -34,6 +35,7 @@ int main(int argc, char *argv[])
 
     qmlRegisterType<AgentBackend>("EduStat.Backend", 1, 0, "AgentBackend");
     qmlRegisterType<ApiClient>("EduStat.Backend", 1, 0, "ApiClient");
+    qmlRegisterType<VideoPlayerProxy>("EduStat.Backend", 1, 0, "VideoPlayerProxy");
 
     QQmlApplicationEngine engine;
     engine.addImportPath(QCoreApplication::applicationDirPath());

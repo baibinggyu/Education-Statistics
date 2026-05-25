@@ -12,6 +12,8 @@ from schemas import (
     CourseMyOut,
     CourseUpdate,
     MemberStudentOut,
+    StudentImportItem,
+    StudentImportResult,
     TeacherBriefOut,
 )
 from routers.units import router as units_router
@@ -309,6 +311,74 @@ def remove_member(
 
     db.delete(member)
     db.commit()
+
+
+# ============================================================
+# 批量导入学生
+# ============================================================
+
+@router.post("/{course_uuid}/import-students", response_model=StudentImportResult)
+def import_students(
+    course_uuid: str,
+    data: list[StudentImportItem],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    course = _get_course_or_404(course_uuid, db)
+    _require_course_teacher_or_admin(course, current_user)
+
+    from security import hash_password
+
+    created = 0
+    skipped = 0
+    errors = []
+
+    for item in data:
+        try:
+            # Check if user already exists
+            existing_user = db.query(User).filter(User.username == item.username).first()
+            if existing_user:
+                # User exists, just add to course if not already a member
+                existing_member = (
+                    db.query(CourseMember)
+                    .filter(CourseMember.course_id == course.id, CourseMember.user_id == existing_user.id)
+                    .first()
+                )
+                if existing_member:
+                    skipped += 1
+                    continue
+                # Add as course member
+                member = CourseMember(course_id=course.id, user_id=existing_user.id, member_role="student")
+                db.add(member)
+                created += 1
+                continue
+
+            # Create new user
+            new_user = User(
+                username=item.username,
+                password_hash=hash_password(item.password),
+                role="student",
+            )
+            db.add(new_user)
+            db.flush()
+
+            # Create student profile
+            student = Student(
+                user_id=new_user.id,
+                student_no=item.student_no,
+                real_name=item.real_name,
+            )
+            db.add(student)
+
+            # Add as course member
+            member = CourseMember(course_id=course.id, user_id=new_user.id, member_role="student")
+            db.add(member)
+            created += 1
+        except Exception as e:
+            errors.append(f"{item.username}: {str(e)}")
+
+    db.commit()
+    return {"total": len(data), "created": created, "skipped": skipped, "errors": errors}
 
 
 # 挂载单元子路由

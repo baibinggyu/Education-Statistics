@@ -2,12 +2,80 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import FluentUI
+import EduStat.Backend 1.0
 
 // 开课申请 Course Application Page
-// DB ref: courses (name, description, teacher_id, status)
-//          units (course_id, name, weight, full_score, unit_order)
-//          course_members (course_id, user_id, member_role)
 Item {
+    required property ApiClient requiredApiClient
+    required property string requiredCourseUuid
+
+
+
+    property var unitRows: [
+        { order: 1, name: "绪论与基础知识", weight: "0.15", score: "100", hours: "6" },
+        { order: 2, name: "半导体器件", weight: "0.20", score: "100", hours: "10" },
+        { order: 3, name: "放大电路基础", weight: "0.25", score: "100", hours: "12" },
+        { order: 4, name: "集成运算放大器", weight: "0.25", score: "100", hours: "10" },
+        { order: 5, name: "直流电源", weight: "0.15", score: "100", hours: "10" }
+    ]
+    property string courseName: ""
+    property string statusMessage: ""
+    property bool submitting: false
+    property string teacherName: "加载中..."
+
+    Component.onCompleted: { requiredApiClient.fetchCurrentUser() }
+
+    Connections {
+        target: requiredApiClient
+        function onUserFetched(uuid, username, role) {
+            teacherName = username + " (" + role + ")"
+        }
+        function onCourseCreated(uuid, name) {
+            for (var i = 0; i < unitRows.length; i++) {
+                var u = unitRows[i]
+                requiredApiClient.createUnit(uuid, u.name, parseFloat(u.weight) || 0,
+                                     parseFloat(u.score) || 100, u.order)
+            }
+            statusMessage = "课程「" + name + "」申请提交成功"
+            submitting = false
+            // Refresh course list in sidebar and other pages
+            requiredApiClient.listCourses()
+        }
+        function onCourseCreateError(msg) {
+            statusMessage = "提交失败: " + msg
+            submitting = false
+        }
+    }
+
+    function totalWeight() {
+        var sum = 0
+        for (var i = 0; i < unitRows.length; i++) {
+            sum += parseFloat(unitRows[i].weight) || 0
+        }
+        return sum.toFixed(2)
+    }
+
+    function submitApplication() {
+        if (!courseName) {
+            statusMessage = "请填写课程名称"
+            return
+        }
+        submitting = true
+        statusMessage = "正在提交..."
+        // Encode extra metadata in description as JSON
+        var extra = {
+            semester: courseSemester.currentText || "",
+            credits: creditsField.text || "",
+            hours: hoursField.text || "",
+            maxStudents: maxField.text || "",
+            location: locationField.text || ""
+        }
+        var desc = courseDescField.text || ""
+        if (desc) desc += "\n---\n"
+        desc += JSON.stringify(extra)
+        requiredApiClient.createCourse(courseName, desc)
+    }
+
     ScrollView {
         anchors.fill: parent
         clip: true
@@ -27,14 +95,21 @@ Item {
                 }
                 Item { Layout.fillWidth: true }
                 FluText {
-                    text: "教师: 陈老师"
+                    text: "教师: " + teacherName
                     font.pixelSize: 11
                     textColor: "#8ea1ad"
+                }
+                FluText {
+                    visible: statusMessage !== ""
+                    text: statusMessage
+                    font.pixelSize: 11
+                    textColor: statusMessage.includes("成功") ? "#22c55e" : "#ef4444"
+                    Layout.leftMargin: 16
                 }
             }
 
             FluText {
-                text: "填写课程信息并提交申请，审核通过后即可开始教学。以下信息对应数据库 courses / units 表结构。"
+                text: "填写课程信息并提交申请，审核通过后即可开始教学。"
                 font.pixelSize: 11
                 textColor: "#8ea1ad"
                 wrapMode: Text.WordWrap
@@ -52,7 +127,7 @@ Item {
                     spacing: 14
 
                     FluText {
-                        text: "基本信息（courses 表）"
+                        text: "基本信息"
                         font.pixelSize: 14
                         font.bold: true
                     }
@@ -63,7 +138,6 @@ Item {
                         rowSpacing: 12
                         columnSpacing: 16
 
-                        // Row 1
                         FluText {
                             text: "课程名称 *"
                             font.pixelSize: 11
@@ -73,9 +147,9 @@ Item {
                         FluTextBox {
                             Layout.fillWidth: true
                             placeholderText: "如：电子技术基础"
+                            onTextChanged: courseName = text
                         }
 
-                        // Row 2
                         FluText {
                             text: "课程类别"
                             font.pixelSize: 11
@@ -88,7 +162,6 @@ Item {
                             currentIndex: 0
                         }
 
-                        // Row 3
                         FluText {
                             text: "开课学期"
                             font.pixelSize: 11
@@ -96,12 +169,12 @@ Item {
                             Layout.alignment: Qt.AlignVCenter
                         }
                         FluComboBox {
+                            id: courseSemester
                             Layout.fillWidth: true
                             model: ["2025-2026学年第一学期", "2025-2026学年第二学期"]
                             currentIndex: 0
                         }
 
-                        // Row 4
                         FluText {
                             text: "学分"
                             font.pixelSize: 11
@@ -109,12 +182,12 @@ Item {
                             Layout.alignment: Qt.AlignVCenter
                         }
                         FluTextBox {
+                            id: creditsField
                             Layout.fillWidth: true
                             placeholderText: "如：3.0"
                             text: "3.0"
                         }
 
-                        // Row 5
                         FluText {
                             text: "总学时"
                             font.pixelSize: 11
@@ -122,12 +195,12 @@ Item {
                             Layout.alignment: Qt.AlignVCenter
                         }
                         FluTextBox {
+                            id: hoursField
                             Layout.fillWidth: true
                             placeholderText: "如：48"
                             text: "48"
                         }
 
-                        // Row 6
                         FluText {
                             text: "限选人数"
                             font.pixelSize: 11
@@ -135,12 +208,12 @@ Item {
                             Layout.alignment: Qt.AlignVCenter
                         }
                         FluTextBox {
+                            id: maxField
                             Layout.fillWidth: true
                             placeholderText: "如：60"
                             text: "60"
                         }
 
-                        // Row 7
                         FluText {
                             text: "上课地点"
                             font.pixelSize: 11
@@ -148,11 +221,11 @@ Item {
                             Layout.alignment: Qt.AlignVCenter
                         }
                         FluTextBox {
+                            id: locationField
                             Layout.fillWidth: true
                             placeholderText: "如：教学楼A301"
                         }
 
-                        // Row 8
                         FluText {
                             text: "上课时间"
                             font.pixelSize: 11
@@ -175,13 +248,13 @@ Item {
 
                     FluDivider { Layout.fillWidth: true }
 
-                    // Description
                     FluText {
-                        text: "课程描述（courses.description）"
+                        text: "课程描述"
                         font.pixelSize: 11
                         textColor: "#b3c0c8"
                     }
                     FluMultilineTextBox {
+                        id: courseDescField
                         Layout.fillWidth: true
                         Layout.preferredHeight: 100
                         placeholderText: "请输入课程简介、教学目标、主要内容等..."
@@ -203,7 +276,7 @@ Item {
                     RowLayout {
                         Layout.fillWidth: true
                         FluText {
-                            text: "教学单元（units 表）"
+                            text: "教学单元"
                             font.pixelSize: 14
                             font.bold: true
                         }
@@ -211,15 +284,17 @@ Item {
                         FluButton {
                             text: "+ 添加单元"
                             font.pixelSize: 11
+                            onClicked: {
+                                unitRows.push({
+                                    order: unitRows.length + 1,
+                                    name: "新单元",
+                                    weight: "0",
+                                    score: "100",
+                                    hours: "0"
+                                })
+                                unitRowsChanged()
+                            }
                         }
-                    }
-
-                    FluText {
-                        text: "每个单元对应数据库 units 表一条记录：单元名称、权重、满分、排序。"
-                        font.pixelSize: 10
-                        textColor: "#8ea1ad"
-                        wrapMode: Text.WordWrap
-                        Layout.fillWidth: true
                     }
 
                     // Units table header
@@ -235,57 +310,19 @@ Item {
                             anchors.rightMargin: 12
                             spacing: 0
 
-                            FluText {
-                                Layout.preferredWidth: 40
-                                text: "序号"
-                                font.pixelSize: 11
-                                font.bold: true
-                            }
-                            FluText {
-                                Layout.fillWidth: true
-                                text: "单元名称"
-                                font.pixelSize: 11
-                                font.bold: true
-                            }
-                            FluText {
-                                Layout.preferredWidth: 80
-                                text: "权重"
-                                font.pixelSize: 11
-                                font.bold: true
-                            }
-                            FluText {
-                                Layout.preferredWidth: 80
-                                text: "满分"
-                                font.pixelSize: 11
-                                font.bold: true
-                            }
-                            FluText {
-                                Layout.preferredWidth: 80
-                                text: "学时"
-                                font.pixelSize: 11
-                                font.bold: true
-                            }
-                            FluText {
-                                Layout.preferredWidth: 50
-                                text: "操作"
-                                font.pixelSize: 11
-                                font.bold: true
-                            }
+                            FluText { Layout.preferredWidth: 40; text: "序号"; font.pixelSize: 11; font.bold: true }
+                            FluText { Layout.fillWidth: true; text: "单元名称"; font.pixelSize: 11; font.bold: true }
+                            FluText { Layout.preferredWidth: 80; text: "权重"; font.pixelSize: 11; font.bold: true }
+                            FluText { Layout.preferredWidth: 80; text: "满分"; font.pixelSize: 11; font.bold: true }
+                            FluText { Layout.preferredWidth: 80; text: "学时"; font.pixelSize: 11; font.bold: true }
                         }
                     }
 
-                    // Units rows
                     ListView {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 200
                         clip: true
-                        model: [
-                            { order: "1", name: "绪论与基础知识", weight: "0.15", score: "100", hours: "6" },
-                            { order: "2", name: "半导体器件", weight: "0.20", score: "100", hours: "10" },
-                            { order: "3", name: "放大电路基础", weight: "0.25", score: "100", hours: "12" },
-                            { order: "4", name: "集成运算放大器", weight: "0.25", score: "100", hours: "10" },
-                            { order: "5", name: "直流电源", weight: "0.15", score: "100", hours: "10" }
-                        ]
+                        model: unitRows
 
                         delegate: Rectangle {
                             required property var modelData
@@ -307,117 +344,46 @@ Item {
                                     font.pixelSize: 11
                                     textColor: "#8ea1ad"
                                 }
-                                FluText {
+                                FluTextBox {
                                     Layout.fillWidth: true
                                     text: modelData.name
                                     font.pixelSize: 11
+                                    Layout.margins: 2
+                                    Layout.preferredHeight: 28
+                                    onTextChanged: { unitRows[index].name = text }
                                 }
-                                FluText {
+                                FluTextBox {
                                     Layout.preferredWidth: 80
                                     text: modelData.weight
                                     font.pixelSize: 11
-                                    textColor: "#0f766e"
+                                    Layout.margins: 2
+                                    Layout.preferredHeight: 28
+                                    onTextChanged: { unitRows[index].weight = text }
                                 }
-                                FluText {
+                                FluTextBox {
                                     Layout.preferredWidth: 80
                                     text: modelData.score
                                     font.pixelSize: 11
+                                    Layout.margins: 2
+                                    Layout.preferredHeight: 28
+                                    onTextChanged: { unitRows[index].score = text }
                                 }
-                                FluText {
+                                FluTextBox {
                                     Layout.preferredWidth: 80
                                     text: modelData.hours
                                     font.pixelSize: 11
-                                    textColor: "#8ea1ad"
-                                }
-                                FluText {
-                                    Layout.preferredWidth: 50
-                                    text: "删除"
-                                    font.pixelSize: 10
-                                    textColor: "#ef4444"
+                                    Layout.margins: 2
+                                    Layout.preferredHeight: 28
+                                    onTextChanged: { unitRows[index].hours = text }
                                 }
                             }
                         }
                     }
 
-                    RowLayout {
-                        FluText {
-                            text: "权重合计: 1.00"
-                            font.pixelSize: 11
-                            textColor: "#22c55e"
-                        }
-                        Item { Layout.fillWidth: true }
-                        FluButton {
-                            text: "按学时自动分配权重"
-                            font.pixelSize: 10
-                        }
-                    }
-                }
-            }
-
-            // ===== SECTION 3: Application notes =====
-            FluFrame {
-                Layout.fillWidth: true
-                radius: 10
-                padding: 20
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    spacing: 12
-
                     FluText {
-                        text: "申请备注"
-                        font.pixelSize: 14
-                        font.bold: true
-                    }
-
-                    FluText {
-                        text: "选填：补充说明教材选用、教学大纲、考核方式等信息，供审核人参考。"
-                        font.pixelSize: 10
-                        textColor: "#8ea1ad"
-                        wrapMode: Text.WordWrap
-                        Layout.fillWidth: true
-                    }
-
-                    GridLayout {
-                        Layout.fillWidth: true
-                        columns: 2
-                        rowSpacing: 10
-                        columnSpacing: 16
-
-                        FluText {
-                            text: "教材"
-                            font.pixelSize: 11
-                            textColor: "#b3c0c8"
-                            Layout.alignment: Qt.AlignVCenter
-                        }
-                        FluTextBox {
-                            Layout.fillWidth: true
-                            placeholderText: "教材名称、作者、出版社"
-                        }
-
-                        FluText {
-                            text: "考核方式"
-                            font.pixelSize: 11
-                            textColor: "#b3c0c8"
-                            Layout.alignment: Qt.AlignVCenter
-                        }
-                        FluComboBox {
-                            Layout.fillWidth: true
-                            model: ["考试", "考查", "考试+考查"]
-                            currentIndex: 0
-                        }
-                    }
-
-                    FluText {
-                        text: "补充说明"
+                        text: "权重合计: " + totalWeight()
                         font.pixelSize: 11
-                        textColor: "#b3c0c8"
-                    }
-                    FluMultilineTextBox {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 80
-                        placeholderText: "其他需要说明的内容..."
-                        wrapMode: Text.WordWrap
+                        textColor: totalWeight() === "1.00" ? "#22c55e" : "#ef4444"
                     }
                 }
             }
@@ -433,29 +399,25 @@ Item {
                     spacing: 12
 
                     FluText {
-                        text: "courses.status 默认为 'normal'，提交后等待管理员审核。审核通过后自动创建 course_members 记录。"
+                        text: "提交后课程将立即创建，您可以随后添加学生成员和视频资源。"
                         font.pixelSize: 10
                         textColor: "#53636d"
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
                     }
 
-                    FluButton {
-                        text: "保存草稿"
-                        font.pixelSize: 12
-                    }
-
                     FluFilledButton {
                         Layout.preferredHeight: 42
                         Layout.preferredWidth: 140
-                        text: "提交申请"
+                        text: submitting ? "提交中..." : "提交申请"
                         font.pixelSize: 13
                         font.bold: true
+                        enabled: !submitting && courseName !== ""
+                        onClicked: submitApplication()
                     }
                 }
             }
 
-            // Bottom spacer
             Item { Layout.preferredHeight: 16 }
         }
     }

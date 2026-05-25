@@ -2,9 +2,46 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import FluentUI
+import EduStat.Backend 1.0
 
 // 发布公告 Course Announcements Page
 Item {
+    required property ApiClient requiredApiClient
+    required property string requiredCourseUuid
+
+    property var announcementsData: ([])
+
+    Component.onCompleted: {
+        if (requiredCourseUuid) requiredApiClient.fetchAnnouncements(requiredCourseUuid)
+    }
+
+    onVisibleChanged: {
+        if (visible && requiredCourseUuid) requiredApiClient.fetchAnnouncements(requiredCourseUuid)
+    }
+
+    onRequiredCourseUuidChanged: {
+        if (visible && requiredCourseUuid) requiredApiClient.fetchAnnouncements(requiredCourseUuid)
+    }
+
+    Connections {
+        target: requiredApiClient
+        function onAnnouncementListReset() { announcementsData = [] }
+        function onAnnouncementListed(uuid, title, content, annType, pinned, authorName, createdAt) {
+            announcementsData.push({
+                uuid: uuid, title: title, content: content,
+                annType: annType, pinned: pinned,
+                authorName: authorName, createdAt: createdAt
+            })
+            announcementsDataChanged()
+        }
+        function onAnnouncementPublished(uuid, title) {
+            requiredApiClient.fetchAnnouncements(requiredCourseUuid)
+        }
+        function onAnnouncementPublishError(msg) {
+            console.log("Publish announcement error:", msg)
+        }
+    }
+
     RowLayout {
         anchors.fill: parent
         spacing: 24
@@ -27,7 +64,7 @@ Item {
                 }
 
                 FluText {
-                    text: "针对当前课程「电子技术基础」发布教学公告，选课学生将在首页收到通知。"
+                    text: "针对当前课程发布教学公告，选课学生将在首页收到通知。"
                     font.pixelSize: 11
                     textColor: "#8ea1ad"
                     wrapMode: Text.WordWrap
@@ -42,6 +79,7 @@ Item {
                     textColor: "#b3c0c8"
                 }
                 FluTextBox {
+                    id: titleInput
                     Layout.fillWidth: true
                     placeholderText: "请输入公告标题"
                 }
@@ -52,6 +90,7 @@ Item {
                     textColor: "#b3c0c8"
                 }
                 FluMultilineTextBox {
+                    id: contentInput
                     Layout.fillWidth: true
                     Layout.preferredHeight: 200
                     placeholderText: "请输入公告内容..."
@@ -64,13 +103,14 @@ Item {
                     textColor: "#b3c0c8"
                 }
                 FluComboBox {
+                    id: typeCombo
                     Layout.fillWidth: true
                     model: ["课程通知", "作业提醒", "考试安排", "资料更新", "其他"]
                     currentIndex: 0
                 }
 
                 RowLayout {
-                    FluToggleSwitch { checked: true }
+                    FluToggleSwitch { id: pinnedSwitch; checked: false }
                     FluText {
                         text: "置顶公告"
                         font.pixelSize: 11
@@ -78,7 +118,7 @@ Item {
                 }
 
                 RowLayout {
-                    FluToggleSwitch { checked: true }
+                    FluToggleSwitch { id: notifySwitch; checked: true }
                     FluText {
                         text: "发送课程消息通知"
                         font.pixelSize: 11
@@ -93,6 +133,17 @@ Item {
                     text: "发 布 公 告"
                     font.pixelSize: 14
                     font.bold: true
+                    onClicked: {
+                        var t = titleInput.text.trim()
+                        var c = contentInput.text.trim()
+                        if (!t || !c) return
+                        requiredApiClient.publishAnnouncement(
+                            requiredCourseUuid, t, c,
+                            typeCombo.model[typeCombo.currentIndex],
+                            pinnedSwitch.checked, notifySwitch.checked)
+                        titleInput.text = ""
+                        contentInput.text = ""
+                    }
                 }
             }
         }
@@ -121,39 +172,11 @@ Item {
                     spacing: 10
 
                     Repeater {
-                        model: [
-                            {
-                                title: "期末考试时间安排通知",
-                                type: "考试安排",
-                                content: "本学期电子技术基础期末考试定于第18周周三进行，请同学们提前做好复习准备。考试范围：第一章至第四章。",
-                                date: "2024-03-15",
-                                pinned: true
-                            },
-                            {
-                                title: "第三章实验报告提交通知",
-                                type: "作业提醒",
-                                content: "请各位同学于本周五前提交第三章实验报告，逾期将扣除平时成绩。实验报告模板已上传至课程资源。",
-                                date: "2024-03-12",
-                                pinned: true
-                            },
-                            {
-                                title: "第五章课件已更新",
-                                type: "资料更新",
-                                content: "第五章课件已上传至课程资源区，请同学们提前下载预习。主要内容包括放大电路的基本原理与分析。",
-                                date: "2024-03-08",
-                                pinned: false
-                            },
-                            {
-                                title: "课代表推选结果公布",
-                                type: "课程通知",
-                                content: "经班级投票，决定由张同学担任本学期电子技术基础课代表，负责日常作业收发和师生沟通。",
-                                date: "2024-03-01",
-                                pinned: false
-                            }
-                        ]
+                        model: announcementsData
 
                         delegate: FluFrame {
                             required property var modelData
+                            required property int index
                             Layout.fillWidth: true
                             radius: 10
                             padding: 16
@@ -184,14 +207,14 @@ Item {
                                         color: FluTheme.dark ? Qt.rgba(255,255,255,0.1) : Qt.rgba(0,0,0,0.06)
                                         padding: 4
                                         FluText {
-                                            text: modelData.type
+                                            text: modelData.annType
                                             font.pixelSize: 9
                                             textColor: "#8ea1ad"
                                         }
                                     }
                                     Item { Layout.fillWidth: true }
                                     FluText {
-                                        text: modelData.date
+                                        text: modelData.createdAt ? modelData.createdAt.substring(0, 10) : ""
                                         font.pixelSize: 10
                                         textColor: "#8ea1ad"
                                     }
@@ -214,6 +237,15 @@ Item {
                                 }
                             }
                         }
+                    }
+
+                    // Empty placeholder — must use Layout.alignment, NOT anchors
+                    Label {
+                        Layout.alignment: Qt.AlignHCenter
+                        visible: announcementsData.length === 0
+                        text: "暂无公告"
+                        color: "#53636d"
+                        font.pixelSize: 12
                     }
                 }
             }

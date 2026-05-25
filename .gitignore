@@ -63,7 +63,12 @@ Thumbs.db
 net_state/edu_routing/
 
 
+# AI agent guide (internal doc, not for repo)
+AI_GUIDE.md
+
 # videio
-*.mp4 
+*.mp4
 *.mp3
 
+libc/ai-sdk-cpp/
+libc/libxlsxwriter/

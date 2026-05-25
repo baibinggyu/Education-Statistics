@@ -2,9 +2,59 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../theme/responsive.dart';
 import '../widgets/common_widgets.dart';
+import '../services/auth_provider.dart';
 
-class MessagesPage extends StatelessWidget {
-  const MessagesPage({super.key});
+class MessagesPage extends StatefulWidget {
+  final AuthProvider auth;
+  const MessagesPage({super.key, required this.auth});
+
+  @override
+  State<MessagesPage> createState() => _MessagesPageState();
+}
+
+class _MessagesPageState extends State<MessagesPage> {
+  List<dynamic> _messages = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMessages();
+  }
+
+  Future<void> _loadMessages() async {
+    try {
+      final courses = await widget.auth.api.listCourses();
+      final all = <Map<String, dynamic>>[];
+      for (final c in courses) {
+        try {
+          final msgs =
+              await widget.auth.api.listMessages(c['uuid'] as String);
+          for (final m in msgs) {
+            all.add({
+              ...m as Map<String, dynamic>,
+              'course_uuid': c['uuid'],
+              'course_name': c['name'],
+            });
+          }
+        } catch (_) {}
+      }
+      // Deduplicate and sort
+      all.sort((a, b) {
+        final da = a['created_at'] as String? ?? '';
+        final db = b['created_at'] as String? ?? '';
+        return db.compareTo(da);
+      });
+      if (mounted) {
+        setState(() {
+          _messages = all;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -16,12 +66,16 @@ class MessagesPage extends StatelessWidget {
           children: [
             Padding(
               padding: EdgeInsets.fromLTRB(r.hPadding, r.vPadding, r.hPadding, 0),
-              child: Text('消息', style: AppTextStyles.scaled(AppTextStyles.heading, r.scale)),
+              child: Text('消息',
+                  style: AppTextStyles.scaled(AppTextStyles.heading, r.scale)),
             ),
             SizedBox(height: r.clamped(12, 8, 16)),
             _buildSearchBar(context),
             SizedBox(height: r.clamped(12, 8, 16)),
-            Expanded(child: _buildConversationList(context)),
+            if (_loading)
+              const Expanded(child: Center(child: CircularProgressIndicator()))
+            else
+              Expanded(child: _buildConversationList(context)),
           ],
         ),
       ),
@@ -35,23 +89,32 @@ class MessagesPage extends StatelessWidget {
       child: TextField(
         decoration: InputDecoration(
           hintText: '搜索消息...',
-          prefixIcon: Icon(Icons.search, color: Theme.of(context).textTheme.bodySmall?.color ?? AppColors.textSecondary),
+          prefixIcon: Icon(Icons.search,
+              color: Theme.of(context).textTheme.bodySmall?.color ??
+                  AppColors.textSecondary),
         ),
       ),
     );
   }
 
   Widget _buildConversationList(BuildContext context) {
-    final conversations = <Map<String, dynamic>>[
-      {'name': '王教授', 'last': '同学们，下周一的课记得预习第三章', 'time': '10:32', 'unread': 2, 'avatar': '王'},
-      {'name': '课程助手', 'last': '您有一份新的作业待提交', 'time': '昨天', 'unread': 1, 'avatar': '助'},
-      {'name': '李老师', 'last': '好的，有问题随时联系我', 'time': '昨天', 'unread': 0, 'avatar': '李'},
-      {'name': '班级群 · 电子技术', 'last': '张三：实验报告模板已上传', 'time': '周一', 'unread': 5, 'avatar': '群'},
-      {'name': '张教授', 'last': '期中考试成绩已公布，请查看', 'time': '周日', 'unread': 0, 'avatar': '张'},
-      {'name': '赵教授', 'last': '教学计划更新通知', 'time': '周六', 'unread': 0, 'avatar': '赵'},
-      {'name': '学习小组', 'last': '刘：周五讨论第三章的习题', 'time': '周五', 'unread': 3, 'avatar': '组'},
-      {'name': '陈老师', 'last': '实验安排有调整，请看通知', 'time': '周四', 'unread': 0, 'avatar': '陈'},
-    ];
+    if (_messages.isEmpty) {
+      return Center(
+        child: Text('暂无消息',
+            style:
+                AppTextStyles.scaled(AppTextStyles.caption, context.responsive.scale)),
+      );
+    }
+
+    // Group by sender for conversation view
+    final grouped = <String, List<dynamic>>{};
+    for (final m in _messages) {
+      final sender = m['sender']?['username'] as String? ?? '系统';
+      final key = '${m['course_uuid']}_$sender';
+      grouped.putIfAbsent(key, () => []).add(m);
+    }
+
+    final conversations = grouped.entries.toList();
 
     return ListView.separated(
       padding: EdgeInsets.zero,
@@ -61,27 +124,104 @@ class MessagesPage extends StatelessWidget {
         return Divider(indent: r.clamped(76, 60, 90), endIndent: r.hPadding);
       },
       itemBuilder: (context, index) {
-        final c = conversations[index];
+        final entry = conversations[index];
+        final msgs = entry.value;
+        final last = msgs.first;
+        final unread =
+            msgs.where((m) => (m['is_read'] as bool? ?? true) == false).length;
+        final senderName =
+            last['sender']?['username'] as String? ?? '系统';
         return ConversationTile(
-          name: c['name'] as String,
-          lastMessage: c['last'] as String,
-          time: c['time'] as String,
-          unreadCount: c['unread'] as int,
-          avatar: c['avatar'] as String,
+          name: '${last['course_name']} - $senderName',
+          lastMessage: last['content'] as String? ?? '',
+          time: _formatTime(last['created_at'] as String?),
+          unreadCount: unread,
+          avatar: senderName.isNotEmpty ? senderName[0] : '系',
           onTap: () {
-            Navigator.push(context, MaterialPageRoute(
-              builder: (_) => _ChatDetailScreen(name: c['name'] as String),
-            ));
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => _ChatDetailScreen(
+                  name: senderName,
+                  courseUuid: last['course_uuid'] as String,
+                  auth: widget.auth,
+                ),
+              ),
+            );
           },
         );
       },
     );
   }
+
+  String _formatTime(String? iso) {
+    if (iso == null) return '';
+    try {
+      final dt = DateTime.parse(iso);
+      return '${dt.month}/${dt.day} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return '';
+    }
+  }
 }
 
-class _ChatDetailScreen extends StatelessWidget {
+class _ChatDetailScreen extends StatefulWidget {
   final String name;
-  const _ChatDetailScreen({required this.name});
+  final String courseUuid;
+  final AuthProvider auth;
+
+  const _ChatDetailScreen({
+    required this.name,
+    required this.courseUuid,
+    required this.auth,
+  });
+
+  @override
+  State<_ChatDetailScreen> createState() => _ChatDetailScreenState();
+}
+
+class _ChatDetailScreenState extends State<_ChatDetailScreen> {
+  final _msgCtrl = TextEditingController();
+  final _scrollCtrl = ScrollController();
+  List<dynamic> _messages = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMessages();
+  }
+
+  Future<void> _loadMessages() async {
+    try {
+      final msgs = await widget.auth.api.listMessages(widget.courseUuid);
+      if (mounted) {
+        setState(() {
+          _messages = msgs;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _sendMessage() async {
+    final text = _msgCtrl.text.trim();
+    if (text.isEmpty) return;
+    _msgCtrl.clear();
+    try {
+      await widget.auth.api.sendMessage(widget.courseUuid, text);
+      await _loadMessages();
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _msgCtrl.dispose();
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -94,16 +234,19 @@ class _ChatDetailScreen extends StatelessWidget {
             CircleAvatar(
               radius: r.clamped(14, 12, 18),
               backgroundColor: AppColors.primary,
-              child: Text(name[0], style: const TextStyle(color: Colors.white, fontSize: 12)),
+              child: Text(widget.name.isNotEmpty ? widget.name[0] : '?',
+                  style: const TextStyle(color: Colors.white, fontSize: 12)),
             ),
             SizedBox(width: r.clamped(8, 6, 10)),
-            Text(name),
+            Text(widget.name),
           ],
         ),
       ),
       body: Column(
         children: [
-          Expanded(child: _buildMessages(context)),
+          Expanded(child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _buildMessages(context)),
           _buildInputBar(context),
         ],
       ),
@@ -112,20 +255,22 @@ class _ChatDetailScreen extends StatelessWidget {
 
   Widget _buildMessages(BuildContext context) {
     final r = context.responsive;
-    final messages = [
-      {'text': '老师好，请问第三章的实验报告什么时候交？', 'sent': true},
-      {'text': '下周五之前提交就可以，有什么不懂的随时来问我。', 'sent': false},
-      {'text': '好的，谢谢老师！那实验数据需要用什么格式提交？', 'sent': true},
-      {'text': '用PDF格式提交，实验数据可以附在报告末尾。如果数据量大，可以打包成zip。', 'sent': false},
-      {'text': '明白了，谢谢老师！', 'sent': true},
-    ];
-
+    if (_messages.isEmpty) {
+      return Center(
+        child: Text('暂无消息',
+            style: AppTextStyles.scaled(AppTextStyles.caption, r.scale)),
+      );
+    }
+    final myUuid = widget.auth.userUuid;
     return ListView.builder(
+      controller: _scrollCtrl,
       padding: EdgeInsets.all(r.hPadding),
-      itemCount: messages.length,
+      itemCount: _messages.length,
       itemBuilder: (context, index) {
-        final msg = messages[index];
-        final sent = msg['sent'] as bool;
+        final msg = _messages[index];
+        final senderUuid = msg['sender']?['uuid'] as String? ?? '';
+        final sent = senderUuid == myUuid;
+        final content = msg['content'] as String? ?? '';
         return Align(
           alignment: sent ? Alignment.centerRight : Alignment.centerLeft,
           child: Container(
@@ -134,9 +279,13 @@ class _ChatDetailScreen extends StatelessWidget {
               horizontal: r.clamped(14, 10, 18),
               vertical: r.clamped(10, 8, 12),
             ),
-            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.7),
+            constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.7),
             decoration: BoxDecoration(
-              color: sent ? AppColors.primary : Theme.of(context).inputDecorationTheme.fillColor ?? AppColors.surfaceLight,
+              color: sent
+                  ? AppColors.primary
+                  : Theme.of(context).inputDecorationTheme.fillColor ??
+                      AppColors.surfaceLight,
               borderRadius: BorderRadius.only(
                 topLeft: const Radius.circular(16),
                 topRight: const Radius.circular(16),
@@ -145,8 +294,12 @@ class _ChatDetailScreen extends StatelessWidget {
               ),
             ),
             child: Text(
-              msg['text'] as String,
-              style: TextStyle(color: sent ? Colors.white : Theme.of(context).colorScheme.onSurface, fontSize: r.clamped(14, 12, 16)),
+              content,
+              style: TextStyle(
+                  color: sent
+                      ? Colors.white
+                      : Theme.of(context).colorScheme.onSurface,
+                  fontSize: r.clamped(14, 12, 16)),
             ),
           ),
         );
@@ -158,7 +311,9 @@ class _ChatDetailScreen extends StatelessWidget {
     final r = context.responsive;
     final theme = Theme.of(context);
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: r.clamped(12, 8, 16), vertical: r.clamped(10, 8, 12)),
+      padding: EdgeInsets.symmetric(
+          horizontal: r.clamped(12, 8, 16),
+          vertical: r.clamped(10, 8, 12)),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         border: Border(top: BorderSide(color: theme.dividerColor)),
@@ -166,27 +321,32 @@ class _ChatDetailScreen extends StatelessWidget {
       child: SafeArea(
         child: Row(
           children: [
-            Icon(Icons.add_circle_outline, color: theme.textTheme.bodySmall?.color ?? AppColors.textSecondary, size: r.clamped(26, 22, 30)),
-            SizedBox(width: r.clamped(8, 6, 10)),
             Expanded(
               child: TextField(
+                controller: _msgCtrl,
                 decoration: InputDecoration(
                   hintText: '输入消息...',
                   filled: true,
                   fillColor: theme.inputDecorationTheme.fillColor,
-                  border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(20)), borderSide: BorderSide.none),
+                  border: const OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(20)),
+                      borderSide: BorderSide.none),
                 ),
               ),
             ),
             SizedBox(width: r.clamped(8, 6, 10)),
-            Container(
-              width: r.clamped(40, 34, 46),
-              height: r.clamped(40, 34, 46),
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(r.clamped(20, 17, 23)),
+            GestureDetector(
+              onTap: _sendMessage,
+              child: Container(
+                width: r.clamped(40, 34, 46),
+                height: r.clamped(40, 34, 46),
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(r.clamped(20, 17, 23)),
+                ),
+                child: Icon(Icons.send,
+                    color: Colors.white, size: r.clamped(18, 16, 20)),
               ),
-              child: Icon(Icons.send, color: Colors.white, size: r.clamped(18, 16, 20)),
             ),
           ],
         ),

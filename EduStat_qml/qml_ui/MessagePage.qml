@@ -2,81 +2,243 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import FluentUI
+import EduStat.Backend 1.0
 
-// 发送消息 Send Message to Students Page
+// QQ 风格消息页面 — 左侧联系人，右侧聊天气泡
 Item {
+    required property ApiClient requiredApiClient
+    required property string requiredCourseUuid
+
+    // ---- persistent contact list (course members) ----
+    property var memberList: []
+
+    // ---- current conversation ----
+    property string chatWithUuid: ""
+    property string chatWithName: ""
+    property var conversationList: []
+
+    // ---- helper: format time from ISO string ----
+    function fmtTime(isoStr) {
+        if (!isoStr) return ""
+        var s = isoStr.toString()
+        var idx = s.indexOf("T")
+        if (idx < 0) return s.substring(0, 10)
+        return s.substring(idx + 1, idx + 6)
+    }
+
+    // ---- Component lifecycle ----
+    Component.onCompleted: {
+        if (requiredCourseUuid) {
+            requiredApiClient.fetchCourseMembers(requiredCourseUuid)
+        }
+    }
+
+    onVisibleChanged: {
+        if (visible && requiredCourseUuid) {
+            requiredApiClient.fetchCourseMembers(requiredCourseUuid)
+        }
+    }
+
+    onRequiredCourseUuidChanged: {
+        conversationList = []
+        chatWithUuid = ""
+        chatWithName = ""
+        if (requiredCourseUuid) {
+            requiredApiClient.fetchCourseMembers(requiredCourseUuid)
+        }
+    }
+
+    // ---- Server Connections ----
+    Connections {
+        target: requiredApiClient
+        function onCourseMembersReset() { memberList = [] }
+        function onCourseMemberListed(userUuid, username, memberRole, joinedAt, studentNo, realName) {
+            memberList.push({
+                userUuid: userUuid, username: username, memberRole: memberRole,
+                studentNo: studentNo, realName: realName
+            })
+            memberListChanged()
+        }
+
+        function onMessageSent(uuid) {
+            if (chatWithUuid) {
+                requiredApiClient.fetchConversation(requiredCourseUuid, chatWithUuid)
+            }
+        }
+        function onMessageSendError(msg) {
+            console.log("Send error:", msg)
+        }
+
+        function onConversationReset() { conversationList = [] }
+        function onConversationListed(uuid, senderUuid, senderName, content, msgType, isRead, subject, createdAt) {
+            conversationList.push({
+                uuid: uuid, senderUuid: senderUuid, senderName: senderName,
+                content: content, msgType: msgType, isRead: isRead,
+                subject: subject, createdAt: createdAt
+            })
+            conversationListChanged()
+        }
+        function onConversationListDone() {
+            chatScrollTimer.start()
+        }
+        function onConversationError(msg) {
+            console.log("Conversation error:", msg)
+        }
+    }
+
+    // Auto-scroll to bottom after conversation loaded
+    Timer {
+        id: chatScrollTimer
+        interval: 50
+        onTriggered: {
+            if (chatView.contentHeight > chatView.height)
+                chatView.positionViewAtEnd()
+        }
+    }
+
+    // ---- Open chat with a user ----
+    function openChat(userUuid, userName) {
+        chatWithUuid = userUuid
+        chatWithName = userName
+        conversationList = []
+        if (requiredCourseUuid && userUuid) {
+            requiredApiClient.fetchConversation(requiredCourseUuid, userUuid)
+        }
+    }
+
+    // ---- Send message in current chat ----
+    function sendChatMessage() {
+        var content = chatInput.text.trim()
+        if (!content || !chatWithUuid) return
+
+        // Determine message type from combo
+        var mtype = chatTypeCombo.model[chatTypeCombo.currentIndex]
+
+        requiredApiClient.sendMessage(
+            requiredCourseUuid, content, mtype, "", chatWithName)
+        chatInput.text = ""
+    }
+
+    // ---- Who's the teacher? (properties so bindings track memberList) ----
+    readonly property string teacherUuid: {
+        for (var i = 0; i < memberList.length; i++) {
+            if (memberList[i].memberRole === "teacher")
+                return memberList[i].userUuid
+        }
+        return ""
+    }
+
+    readonly property string teacherName: {
+        for (var i = 0; i < memberList.length; i++) {
+            if (memberList[i].memberRole === "teacher")
+                return memberList[i].realName || memberList[i].username
+        }
+        return "教师"
+    }
+
     RowLayout {
         anchors.fill: parent
-        spacing: 20
+        spacing: 0
 
-        // Left: Student list
-        FluFrame {
-            Layout.preferredWidth: 320
+        // ============================================================
+        // Left: Contact list
+        // ============================================================
+        Rectangle {
+            Layout.preferredWidth: 260
             Layout.fillHeight: true
-            radius: 12
+            color: FluTheme.dark ? Qt.rgba(22/255, 25/255, 30/255, 1) : "#f5f5f5"
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 16
-                spacing: 12
+                anchors.margins: 8
+                spacing: 8
 
-                FluText {
-                    text: "选择学生"
-                    font.pixelSize: 15
-                    font.bold: true
-                }
-
-                RowLayout {
-                    FluTextBox {
-                        Layout.fillWidth: true
-                        placeholderText: "搜索学生姓名/学号..."
-                    }
-                }
-
-                FluComboBox {
+                // Search bar
+                FluTextBox {
                     Layout.fillWidth: true
-                    model: ["全部学生", "未读消息", "近期活跃"]
-                    currentIndex: 0
+                    placeholderText: "搜索联系人..."
                 }
 
-                FluDivider { Layout.fillWidth: true }
-
+                // Contact list
                 ScrollView {
+                    id: contactScroll
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
                     ScrollBar.vertical: FluScrollBar {}
 
                     ColumnLayout {
-                        width: parent.width
-                        spacing: 4
+                        width: contactScroll.availableWidth
+                        spacing: 2
 
+                        // Teacher always first
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 56
+                            radius: 8
+                            color: chatWithUuid === teacherUuid
+                                ? Qt.rgba(15/255, 118/255, 110/255, 0.15)
+                                : (contactMouse.containsMouse ? Qt.rgba(255,255,255,0.05) : "transparent")
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 12
+                                anchors.rightMargin: 12
+                                spacing: 10
+
+                                Rectangle {
+                                    width: 40; height: 40; radius: 20
+                                    color: "#0f766e"
+                                    FluText {
+                                        anchors.centerIn: parent
+                                        text: "T"
+                                        font.pixelSize: 16
+                                        font.bold: true
+                                        textColor: "#ffffff"
+                                    }
+                                }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+                                    FluText {
+                                        text: "教师（" + teacherName + "）"
+                                        font.pixelSize: 12
+                                        font.bold: true
+                                    }
+                                    FluText {
+                                        text: "点击与教师对话"
+                                        font.pixelSize: 10
+                                        textColor: "#8ea1ad"
+                                    }
+                                }
+                            }
+
+                            MouseArea {
+                                id: contactMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (teacherUuid) openChat(teacherUuid, teacherName)
+                                }
+                            }
+                        }
+
+                        // Students list
                         Repeater {
-                            model: [
-                                { name: "张同学", id: "2021001", unread: 3, selected: false },
-                                { name: "李同学", id: "2021002", unread: 0, selected: true },
-                                { name: "王同学", id: "2021003", unread: 1, selected: false },
-                                { name: "赵同学", id: "2021004", unread: 0, selected: false },
-                                { name: "刘同学", id: "2021005", unread: 0, selected: false },
-                                { name: "陈同学", id: "2021006", unread: 2, selected: false },
-                                { name: "杨同学", id: "2021007", unread: 0, selected: false },
-                                { name: "黄同学", id: "2021008", unread: 0, selected: false },
-                                { name: "周同学", id: "2021009", unread: 1, selected: false },
-                                { name: "吴同学", id: "2021010", unread: 0, selected: false },
-                                { name: "孙同学", id: "2021011", unread: 4, selected: false },
-                                { name: "郑同学", id: "2021012", unread: 0, selected: false }
-                            ]
+                            model: memberList
 
                             delegate: Rectangle {
                                 required property var modelData
+                                required property int index
+                                visible: modelData.memberRole === "student"
                                 Layout.fillWidth: true
-                                height: 48
+                                height: 52
                                 radius: 8
-                                color: {
-                                    if (modelData.selected) return Qt.rgba(15/255, 118/255, 110/255, 0.2)
-                                    if (mouseArea.containsMouse) return Qt.rgba(43/255, 50/255, 56/255, 1)
-                                    return "transparent"
-                                }
+                                color: chatWithUuid === modelData.userUuid
+                                    ? Qt.rgba(15/255, 118/255, 110/255, 0.15)
+                                    : (stuMouse.containsMouse ? Qt.rgba(255,255,255,0.05) : "transparent")
 
                                 RowLayout {
                                     anchors.fill: parent
@@ -85,13 +247,11 @@ Item {
                                     spacing: 10
 
                                     Rectangle {
-                                        width: 36; height: 36
-                                        radius: 18
-                                        color: "#0f766e"
-
+                                        width: 38; height: 38; radius: 19
+                                        color: "#555555"
                                         FluText {
                                             anchors.centerIn: parent
-                                            text: modelData.name.charAt(0)
+                                            text: (modelData.realName || modelData.username).charAt(0)
                                             font.pixelSize: 14
                                             font.bold: true
                                             textColor: "#ffffff"
@@ -100,38 +260,28 @@ Item {
 
                                     ColumnLayout {
                                         Layout.fillWidth: true
-                                        spacing: 1
+                                        spacing: 2
                                         FluText {
-                                            text: modelData.name
+                                            text: modelData.realName || modelData.username
                                             font.pixelSize: 12
                                         }
                                         FluText {
-                                            text: "学号: " + modelData.id
+                                            text: "学号: " + (modelData.studentNo || "未绑定")
                                             font.pixelSize: 9
                                             textColor: "#8ea1ad"
-                                        }
-                                    }
-
-                                    Rectangle {
-                                        visible: modelData.unread > 0
-                                        width: 22; height: 18
-                                        radius: 9
-                                        color: "#ef4444"
-
-                                        FluText {
-                                            anchors.centerIn: parent
-                                            text: modelData.unread
-                                            font.pixelSize: 10
-                                            textColor: "#ffffff"
                                         }
                                     }
                                 }
 
                                 MouseArea {
-                                    id: mouseArea
+                                    id: stuMouse
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        var name = modelData.realName || modelData.username
+                                        openChat(modelData.userUuid, modelData.username)
+                                    }
                                 }
                             }
                         }
@@ -140,245 +290,189 @@ Item {
             }
         }
 
-        // Right: Message composer
+        // Vertical divider
+        Rectangle {
+            Layout.preferredWidth: 1
+            Layout.fillHeight: true
+            color: FluTheme.dark ? Qt.rgba(255,255,255,0.08) : Qt.rgba(0,0,0,0.08)
+        }
+
+        // ============================================================
+        // Right: Chat area
+        // ============================================================
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 16
+            spacing: 0
 
-            FluText {
-                text: "发送消息"
-                font.pixelSize: 18
-                font.bold: true
-            }
-
-            // Recipient summary
-            FluFrame {
+            // Chat header
+            Rectangle {
                 Layout.fillWidth: true
-                radius: 8
+                Layout.preferredHeight: 52
                 color: FluTheme.dark ? Qt.rgba(25/255, 29/255, 35/255, 1) : "#fafafa"
-                padding: 12
 
                 RowLayout {
                     anchors.fill: parent
-                    spacing: 8
+                    anchors.leftMargin: 16
+                    anchors.rightMargin: 16
+                    spacing: 10
 
                     FluText {
-                        text: "收件人:"
-                        font.pixelSize: 11
-                        textColor: "#8ea1ad"
-                    }
-
-                    FluFrame {
-                        radius: 4
-                        color: "#0f766e"
-                        padding: 4
-                        FluText {
-                            text: "李同学 (2021002)"
-                            font.pixelSize: 10
-                            textColor: "#ffffff"
-                        }
-                    }
-
-                    FluText {
-                        text: "+ 选择更多"
-                        font.pixelSize: 10
-                        textColor: "#0f766e"
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    FluText {
-                        text: "当前课程: 电子技术基础"
-                        font.pixelSize: 10
-                        textColor: "#53636d"
-                        elide: Text.ElideRight
-                        Layout.maximumWidth: 180
-                    }
-                }
-            }
-
-            // Message type
-            RowLayout {
-                spacing: 12
-                FluText {
-                    text: "消息类型"
-                    font.pixelSize: 12
-                    textColor: "#b3c0c8"
-                }
-                FluComboBox {
-                    Layout.preferredWidth: 160
-                    model: ["学习提醒", "作业通知", "考试安排", "课堂反馈", "其他"]
-                    currentIndex: 0
-                }
-            }
-
-            // Subject
-            FluTextBox {
-                Layout.fillWidth: true
-                placeholderText: "消息主题（选填）"
-            }
-
-            // Content
-            FluMultilineTextBox {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                placeholderText: "请输入消息内容..."
-                wrapMode: Text.WordWrap
-            }
-
-            // Quick templates
-            FluText {
-                text: "快捷模板"
-                font.pixelSize: 12
-                font.bold: true
-                textColor: "#b3c0c8"
-            }
-
-            FluFrame {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 80
-                radius: 8
-                color: FluTheme.dark ? Qt.rgba(25/255, 29/255, 35/255, 1) : "#fafafa"
-                padding: 8
-
-                ScrollView {
-                    anchors.fill: parent
-                    clip: true
-                    ScrollBar.horizontal: FluScrollBar {}
-
-                    RowLayout {
-                        height: parent.height
-                        spacing: 8
-                        Repeater {
-                            model: [
-                                { label: "作业催交", content: "同学你好，请尽快提交本周作业，截止时间即将到来。" },
-                                { label: "课堂提醒", content: "提醒：明天上课请带好教材和实验报告。" },
-                                { label: "成绩通知", content: "你的最近一次测验成绩已公布，请查看。" },
-                                { label: "答疑邀请", content: "如有疑问，欢迎在课后到办公室找我答疑。" }
-                            ]
-
-                            delegate: FluFrame {
-                                required property var modelData
-                                Layout.preferredWidth: 140
-                                Layout.fillHeight: true
-                                radius: 6
-                                color: FluTheme.dark ? Qt.rgba(25/255, 29/255, 35/255, 1) : "#fafafa"
-                                padding: 10
-
-                                ColumnLayout {
-                                    anchors.fill: parent
-                                    spacing: 4
-                                    FluText {
-                                        text: modelData.label
-                                        font.pixelSize: 11
-                                        font.bold: true
-                                    }
-                                    FluText {
-                                        text: modelData.content
-                                        font.pixelSize: 9
-                                        textColor: "#8ea1ad"
-                                        wrapMode: Text.WordWrap
-                                        Layout.fillWidth: true
-                                        maximumLineCount: 2
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Bottom action row
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 10
-
-                FluToggleSwitch { checked: true }
-                FluText {
-                    text: "发送系统通知"
-                    font.pixelSize: 11
-                    textColor: "#8ea1ad"
-                }
-
-                Item { Layout.fillWidth: true }
-
-                FluButton {
-                    text: "预览"
-                    font.pixelSize: 12
-                    Layout.preferredWidth: 56
-                }
-
-                FluFilledButton {
-                    Layout.preferredHeight: 38
-                    Layout.preferredWidth: 120
-                    text: "发送消息"
-                    font.pixelSize: 12
-                    font.bold: true
-                }
-            }
-
-            // Recent sent messages
-            FluFrame {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 140
-                radius: 10
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 14
-                    spacing: 8
-
-                    FluText {
-                        text: "最近发送"
-                        font.pixelSize: 12
+                        text: chatWithName || "选择联系人开始对话"
+                        font.pixelSize: 14
                         font.bold: true
                     }
 
-                    ListView {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        clip: true
-                        model: [
-                            { to: "张同学", content: "请尽快提交第三章实验报告", time: "10:30", type: "作业提醒" },
-                            { to: "全班", content: "期末考试时间已公布，请查看课程公告", time: "昨天 14:20", type: "考试安排" },
-                            { to: "王同学", content: "你的课后答疑安排在明天下午3点", time: "昨天 09:15", type: "其他" }
-                        ]
+                    FluComboBox {
+                        id: chatTypeCombo
+                        visible: chatWithUuid !== ""
+                        Layout.preferredWidth: 120
+                        model: ["学习提醒", "作业通知", "考试安排", "课堂反馈", "其他"]
+                        currentIndex: 0
+                    }
+
+                    Item { Layout.fillWidth: true }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: FluTheme.dark ? Qt.rgba(255,255,255,0.06) : Qt.rgba(0,0,0,0.06)
+            }
+
+            // Chat messages
+            ScrollView {
+                id: chatScroll
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                ScrollBar.vertical: FluScrollBar {}
+
+                ColumnLayout {
+                    id: chatView
+                    width: chatScroll.availableWidth
+                    spacing: 6
+
+                    FluText {
+                        Layout.alignment: Qt.AlignHCenter
+                        visible: chatWithUuid === ""
+                        text: "点击左侧联系人开始对话"
+                        font.pixelSize: 13
+                        textColor: "#53636d"
+                        Layout.topMargin: 100
+                    }
+
+                    // Message bubbles
+                    Repeater {
+                        model: conversationList
 
                         delegate: RowLayout {
                             required property var modelData
-                            width: ListView.view.width
-                            height: 32
-                            spacing: 10
+                            Layout.fillWidth: true
+                            Layout.leftMargin: modelData.senderUuid === requiredApiClient.userUuid ? 60 : 8
+                            Layout.rightMargin: modelData.senderUuid === requiredApiClient.userUuid ? 8 : 60
+
+                            // layoutDirection trick to align bubbles left/right
+                            layoutDirection: modelData.senderUuid === requiredApiClient.userUuid
+                                ? Qt.RightToLeft : Qt.LeftToRight
 
                             FluFrame {
-                                radius: 4
-                                color: Qt.rgba(15/255, 118/255, 110/255, 0.15)
-                                padding: 2
-                                FluText {
-                                    text: modelData.type
-                                    font.pixelSize: 8
-                                    textColor: "#0f766e"
+                                Layout.preferredWidth: Math.min(
+                                    implicitWidth + 24, chatView.width * 0.7)
+                                radius: 12
+                                color: modelData.senderUuid === requiredApiClient.userUuid
+                                    ? "#0f766e"
+                                    : (FluTheme.dark ? Qt.rgba(40/255, 44/255, 50/255, 1)
+                                                     : "#e8e8e8")
+                                padding: 10
+
+                                ColumnLayout {
+                                    spacing: 4
+                                    FluText {
+                                        text: modelData.content
+                                        font.pixelSize: 12
+                                        textColor: modelData.senderUuid === requiredApiClient.userUuid
+                                            ? "#ffffff" : "#edf6f4"
+                                        wrapMode: Text.WordWrap
+                                        Layout.maximumWidth: chatView.width * 0.7 - 48
+                                    }
+                                    RowLayout {
+                                        spacing: 6
+                                        FluText {
+                                            text: modelData.senderName
+                                            font.pixelSize: 9
+                                            textColor: modelData.senderUuid === requiredApiClient.userUuid
+                                                ? Qt.rgba(255,255,255,0.5) : "#8ea1ad"
+                                        }
+                                        FluText {
+                                            text: fmtTime(modelData.createdAt)
+                                            font.pixelSize: 9
+                                            textColor: modelData.senderUuid === requiredApiClient.userUuid
+                                                ? Qt.rgba(255,255,255,0.4) : "#53636d"
+                                        }
+                                    }
+                                    FluFrame {
+                                        visible: modelData.msgType !== ""
+                                        radius: 3
+                                        color: modelData.senderUuid === requiredApiClient.userUuid
+                                            ? Qt.rgba(255,255,255,0.15)
+                                            : Qt.rgba(15/255, 118/255, 110/255, 0.12)
+                                        padding: 2
+                                        FluText {
+                                            text: modelData.msgType
+                                            font.pixelSize: 8
+                                            textColor: modelData.senderUuid === requiredApiClient.userUuid
+                                                ? Qt.rgba(255,255,255,0.7) : "#0f766e"
+                                        }
+                                    }
                                 }
                             }
-                            FluText {
-                                text: modelData.to
-                                font.pixelSize: 11
-                                font.bold: true
-                            }
-                            FluText {
-                                Layout.fillWidth: true
-                                text: modelData.content
-                                font.pixelSize: 10
-                                textColor: "#8ea1ad"
-                                elide: Text.ElideRight
-                            }
-                            FluText {
-                                text: modelData.time
-                                font.pixelSize: 9
-                                textColor: "#53636d"
-                            }
+
+                            Item { Layout.fillWidth: true }
                         }
+                    }
+                }
+            }
+
+            // Input bar
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 56
+                color: FluTheme.dark ? Qt.rgba(25/255, 29/255, 35/255, 1) : "#fafafa"
+
+                Rectangle {
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    height: 1
+                    color: FluTheme.dark ? Qt.rgba(255,255,255,0.06) : Qt.rgba(0,0,0,0.06)
+                }
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    spacing: 8
+
+                    FluTextBox {
+                        id: chatInput
+                        Layout.fillWidth: true
+                        placeholderText: chatWithUuid
+                            ? "输入消息..."
+                            : "请先选择联系人"
+                        enabled: chatWithUuid !== ""
+                        onAccepted: sendChatMessage()
+                    }
+
+                    FluFilledButton {
+                        Layout.preferredHeight: 36
+                        Layout.preferredWidth: 80
+                        text: "发送"
+                        font.pixelSize: 12
+                        font.bold: true
+                        enabled: chatWithUuid !== "" && chatInput.text.trim() !== ""
+                        onClicked: sendChatMessage()
                     }
                 }
             }

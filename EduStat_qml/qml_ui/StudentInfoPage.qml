@@ -1,4 +1,6 @@
 import QtQuick
+import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import FluentUI
 import EduStat.Backend 1.0
@@ -7,6 +9,7 @@ import EduStat.Backend 1.0
 Item {
     required property ApiClient requiredApiClient
     required property string requiredCourseUuid
+    required property string requiredCourseName
 
     property var summaryData: ({})
     property var unitsData: ([])
@@ -17,11 +20,19 @@ Item {
     property string searchTerm: ""
     property bool membersLoaded: false
     property bool scoresLoaded: false
-    // Track which cell is being edited: {rowIndex, unitId}
-    property var editingCell: null
+    property var editingCell: null // {rowIndex, unitId}
+    property string sortMode: "student_no"  // "student_no" | "rank"
 
     Component.onCompleted: {
         if (requiredCourseUuid) refreshData()
+    }
+
+    onRequiredCourseUuidChanged: {
+        if (visible && requiredCourseUuid) refreshData()
+    }
+
+    onVisibleChanged: {
+        if (visible && requiredCourseUuid) refreshData()
     }
 
     function refreshData() {
@@ -142,14 +153,107 @@ Item {
         return result
     }
 
-    property var filteredStudents: {
-        if (!searchTerm) return studentsData
+    // Sorted and filtered
+    property var displayStudents: {
+        var list = studentsData.slice()
+        if (sortMode === "rank") {
+            list.sort(function(a, b) {
+                var ra = a.rank != null ? a.rank : 9999
+                var rb = b.rank != null ? b.rank : 9999
+                return ra - rb
+            })
+        } else {
+            list.sort(function(a, b) {
+                var sa = a.student_no || ""
+                var sb = b.student_no || ""
+                return sa.localeCompare(sb)
+            })
+        }
+        if (!searchTerm) return list
         var term = searchTerm.toLowerCase()
-        return studentsData.filter(function(s) {
+        return list.filter(function(s) {
             return (s.student_no || "").toLowerCase().includes(term) ||
                    (s.real_name || "").toLowerCase().includes(term) ||
                    (s.username || "").toLowerCase().includes(term)
         })
+    }
+
+    // ---- Export helpers ----
+    function generateExportContent(format) {
+        var list = displayStudents
+        if (format === "csv") {
+            var header = ["学号","姓名","用户名"].concat(unitNames).concat(["加权总分","排名"])
+            var lines = [header.join(",")]
+            for (var i = 0; i < list.length; i++) {
+                var s = list[i]
+                var row = [
+                    s.student_no || "",
+                    s.real_name || "",
+                    s.username || ""
+                ]
+                var entries = s.scoreEntries || []
+                for (var j = 0; j < entries.length; j++) {
+                    row.push(entries[j].value != null ? entries[j].value.toFixed(1) : "")
+                }
+                row.push(s.weighted_total != null ? s.weighted_total.toFixed(1) : "")
+                row.push(s.rank != null ? s.rank : "")
+                lines.push(row.join(","))
+            }
+            return lines.join("\n")
+        }
+        // Markdown (default)
+        var headerCells = ["#","学号","姓名","用户名"].concat(unitNames).concat(["加权总分","排名"])
+        var md = "| " + headerCells.join(" | ") + " |\n"
+        md += "|" + headerCells.map(function(){return "---"}).join("|") + "|\n"
+        for (var i = 0; i < list.length; i++) {
+            var s = list[i]
+            var cells = [
+                String(i + 1),
+                s.student_no || "",
+                s.real_name || "",
+                s.username || ""
+            ]
+            var entries = s.scoreEntries || []
+            for (var j = 0; j < entries.length; j++) {
+                cells.push(entries[j].value != null ? entries[j].value.toFixed(1) : "--")
+            }
+            cells.push(s.weighted_total != null ? s.weighted_total.toFixed(1) : "--")
+            cells.push(s.rank != null ? "#" + s.rank : "--")
+            md += "| " + cells.join(" | ") + " |\n"
+        }
+        return md
+    }
+
+    function detectFormat(path) {
+        var p = path.toLowerCase()
+        if (p.endsWith(".csv")) return "csv"
+        if (p.endsWith(".xlsx")) return "xlsx"
+        return "markdown"  // .md or anything else
+    }
+
+    FileDialog {
+        id: exportFileDialog
+        title: "导出成绩"
+        nameFilters: [
+            "Excel (*.xlsx)",
+            "CSV (*.csv)",
+            "Markdown (*.md)"
+        ]
+        fileMode: FileDialog.SaveFile
+        onAccepted: {
+            var path = exportFileDialog.selectedFile.toString()
+            if (path.startsWith("file://")) path = path.substring(7)
+            var fmt = detectFormat(path)
+
+            if (fmt === "xlsx") {
+                var ok = requiredApiClient.exportScoresToExcel(path, unitNames, displayStudents)
+                if (!ok) console.log("Excel export failed:", path)
+            } else {
+                var content = generateExportContent(fmt)
+                var ok = requiredApiClient.saveTextFile(path, content)
+                if (!ok) console.log("Export failed:", path)
+            }
+        }
     }
 
     ColumnLayout {
@@ -171,27 +275,48 @@ Item {
                 font.pixelSize: 12
                 onClicked: refreshData()
             }
-            Item { Layout.preferredWidth: 10 }
+
+            FluText { text: "排序"; font.pixelSize: 11; textColor: "#b3c0c8" }
+            FluComboBox {
+                id: sortSelector
+                Layout.preferredWidth: 120
+                model: ["按学号", "按成绩排名"]
+                currentIndex: sortMode === "rank" ? 1 : 0
+                onActivated: {
+                    sortMode = currentIndex === 1 ? "rank" : "student_no"
+                    displayStudentsChanged()
+                }
+            }
+
+            Item { Layout.fillWidth: true }
+
             FluTextBox {
                 id: searchBox
-                Layout.fillWidth: true
                 Layout.preferredWidth: 200
-                placeholderText: "搜索学生姓名 / 学号 / 用户名..."
+                placeholderText: "搜索..."
                 onTextChanged: searchTerm = text
             }
-            FluButton {
+
+            FluFilledButton {
                 text: "导出"
                 font.pixelSize: 12
+                onClicked: {
+                    var name = (requiredCourseName || "成绩表").replace(/[\\/:*?"<>|]/g, '_')
+                    // Default to .xlsx (richest format); user can pick .csv or .md in dialog
+                    exportFileDialog.selectedFile = requiredApiClient.homeDir() + "/" + name + ".xlsx"
+                    exportFileDialog.open()
+                }
             }
         }
 
         FluText {
             text: {
                 var total = studentsData.length
-                var filtered = filteredStudents.length
-                var base = "共 " + total + " 名学生"
-                if (filtered !== total) base += "，筛选结果 " + filtered + " 人"
-                base += " · 单元数：" + (unitNames.length > 0 ? unitNames.length : (summaryData.unit_names ? summaryData.unit_names.length : 0))
+                var shown = displayStudents.length
+                var modeLabel = sortMode === "rank" ? "按成绩排名" : "按学号"
+                var base = "共 " + total + " 名学生 · " + modeLabel
+                if (shown !== total) base += " · 筛选 " + shown + " 人"
+                base += " · " + (unitNames.length || 0) + " 个单元"
                 if (!membersLoaded || !scoresLoaded) base += " · 加载中..."
                 return base
             }
@@ -211,12 +336,14 @@ Item {
 
                 // Table header
                 Rectangle {
+                    id: headerRow
                     Layout.fillWidth: true
                     height: 42
                     color: Qt.rgba(0,0,0,0.08)
                     radius: 8
 
                     RowLayout {
+                        id: headerRowLayout
                         anchors.fill: parent
                         anchors.leftMargin: 14
                         anchors.rightMargin: 14
@@ -246,13 +373,13 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
-                    model: filteredStudents
+                    model: displayStudents
 
                     delegate: Rectangle {
                         id: rowDelegate
                         required property var modelData
                         required property int index
-                        width: studentList.width
+                        width: headerRow.width
                         height: 40
                         color: index % 2 === 0 ? "transparent" : Qt.rgba(0,0,0,0.04)
                         radius: 4
@@ -406,7 +533,7 @@ Item {
                 }
 
                 FluText {
-                    visible: filteredStudents.length === 0 && membersLoaded && scoresLoaded
+                    visible: displayStudents.length === 0 && membersLoaded && scoresLoaded
                     Layout.alignment: Qt.AlignCenter
                     text: studentsData.length === 0 ? "该课程暂无学生" : "无匹配结果"
                     font.pixelSize: 13

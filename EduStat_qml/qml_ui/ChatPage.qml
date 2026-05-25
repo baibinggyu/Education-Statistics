@@ -8,6 +8,7 @@ Item {
     id: root
     property string activeSessionId: ""
     property string streamingMsgId: ""
+    required property ApiClient requiredApiClient
 
     // ---- AgentBackend (from C++) ----
     AgentBackend {
@@ -96,7 +97,10 @@ Item {
         return "msg_" + msgIdCounter
     }
 
-    Component.onCompleted: chat.newConversation()
+    Component.onCompleted: {
+        chat.setApiClient(requiredApiClient)
+        chat.restoreLastConversation()
+    }
 
     RowLayout {
         anchors.fill: parent
@@ -498,19 +502,49 @@ Item {
                     anchors.fill: parent
                     spacing: 12
 
-                    FluMultilineTextBox {
-                        id: inputBox
+                    ScrollView {
+                        id: inputScrollView
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 60
-                        placeholderText: chat.agentMode
-                            ? "输入任务... (Enter 发送, Shift+Enter 换行)"
-                            : "输入消息... (Enter 发送, Shift+Enter 换行)"
-                        enabled: !chat.loading
+                        Layout.preferredHeight: 80
+                        clip: true
 
-                        Keys.onReturnPressed: function(event) {
-                            if (!(event.modifiers & Qt.ShiftModifier)) {
-                                event.accepted = true
-                                sendBtn.clicked()
+                        ScrollBar.vertical: FluScrollBar {}
+
+                        TextArea {
+                            id: inputBox
+                            width: inputScrollView.width
+                            wrapMode: Text.WordWrap
+                            font: FluTextStyle.Body
+                            color: FluTheme.dark ? Qt.rgba(1,1,1,1) : Qt.rgba(27/255,27/255,27/255,1)
+                            padding: 8
+                            leftPadding: 12
+                            renderType: FluTheme.nativeText ? Text.NativeRendering : Text.QtRendering
+                            selectionColor: FluTools.withOpacity(FluTheme.primaryColor, 0.5)
+                            selectedTextColor: FluTheme.dark ? Qt.rgba(1,1,1,1) : Qt.rgba(27/255,27/255,27/255,1)
+                            selectByMouse: true
+                            placeholderText: chat.agentMode
+                                ? "输入任务... (Enter 发送, Shift+Enter 换行)"
+                                : "输入消息... (Enter 发送, Shift+Enter 换行)"
+                            placeholderTextColor: {
+                                if (!enabled) return FluTheme.dark ? Qt.rgba(131/255,131/255,131/255,1) : Qt.rgba(160/255,160/255,160/255,1)
+                                if (activeFocus) return FluTheme.dark ? Qt.rgba(152/255,152/255,152/255,1) : Qt.rgba(141/255,141/255,141/255,1)
+                                return FluTheme.dark ? Qt.rgba(210/255,210/255,210/255,1) : Qt.rgba(96/255,96/255,96/255,1)
+                            }
+                            enabled: !chat.loading
+
+                            background: Rectangle {
+                                radius: 6
+                                color: FluTheme.dark ? Qt.rgba(0,0,0,0.15) : Qt.rgba(0,0,0,0.06)
+                                border.width: inputBox.activeFocus ? 1 : 0
+                                border.color: FluTheme.primaryColor
+                            }
+
+                            Keys.onPressed: function(event) {
+                                if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                                    && !(event.modifiers & Qt.ShiftModifier)) {
+                                    event.accepted = true
+                                    sendBtn.clicked()
+                                }
                             }
                         }
                     }
@@ -518,7 +552,7 @@ Item {
                     FluFilledButton {
                         id: sendBtn
                         text: "发送"
-                        Layout.preferredHeight: 60
+                        Layout.alignment: Qt.AlignTop
                         enabled: inputBox.text.trim().length > 0 && !chat.loading
                         onClicked: {
                             var txt = inputBox.text.trim()

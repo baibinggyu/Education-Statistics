@@ -1,0 +1,6 @@
+<RCC>
+  <qresource prefix="/">
+    <file alias="/qt/qml/FluentUI">/home/bai-yu/codeProject/edu/EduStat_qml/fluentui-install</file>
+
+  </qresource>
+</RCC>

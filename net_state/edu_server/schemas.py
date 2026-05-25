@@ -399,6 +399,73 @@ class PlayRecordCourseOut(BaseModel):
 
 
 # ============================================================
+# Announcement
+# ============================================================
+
+class AnnouncementCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    content: str = Field(min_length=1)
+    ann_type: str = Field(default="课程通知", pattern="^(课程通知|作业提醒|考试安排|资料更新|其他)$")
+    pinned: bool = False
+    notify: bool = True
+
+
+class AnnouncementUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    content: Optional[str] = None
+    ann_type: Optional[str] = Field(default=None, pattern="^(课程通知|作业提醒|考试安排|资料更新|其他)$")
+    pinned: Optional[bool] = None
+    notify: Optional[bool] = None
+
+
+class AuthorBriefOut(BaseModel):
+    uuid: str
+    username: str
+
+    model_config = {"from_attributes": True}
+
+
+class AnnouncementOut(BaseModel):
+    uuid: str
+    course_uuid: str
+    title: str
+    content: str
+    ann_type: str
+    pinned: bool
+    notify: bool
+    author: Optional[AuthorBriefOut] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+# ============================================================
+# Message
+# ============================================================
+
+class MessageCreate(BaseModel):
+    subject: Optional[str] = Field(default=None, max_length=255)
+    content: str = Field(min_length=1)
+    msg_type: str = Field(default="其他", pattern="^(学习提醒|作业通知|考试安排|课堂反馈|其他)$")
+    recipient_username: Optional[str] = None  # None = send to all course members
+
+
+class MessageOut(BaseModel):
+    uuid: str
+    course_uuid: str
+    subject: Optional[str] = None
+    content: str
+    msg_type: str
+    is_read: bool
+    sender: Optional[AuthorBriefOut] = None
+    recipient: Optional[AuthorBriefOut] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ============================================================
 # File Upload
 # ============================================================
 
@@ -406,6 +473,85 @@ class FileUploadOut(BaseModel):
     file_path: str
     file_size: int
     original_name: str
+
+
+# ============================================================
+# Batch Student Import
+# ============================================================
+
+class StudentImportItem(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=128)
+    student_no: str = Field(min_length=1, max_length=64)
+    real_name: str = Field(min_length=1, max_length=64)
+
+
+class StudentImportResult(BaseModel):
+    total: int
+    created: int
+    skipped: int
+    errors: list[str] = []
+
+
+# ============================================================
+# Attendance
+# ============================================================
+
+class AttendanceCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+
+
+class AttendanceMark(BaseModel):
+    student_uuid: str
+    status: str = Field(pattern="^(present|absent|late|leave)$")
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+class AttendanceRecordOut(BaseModel):
+    student_uuid: str
+    student_name: str
+    student_no: Optional[str] = None
+    real_name: Optional[str] = None
+    status: str
+    note: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AttendanceOut(BaseModel):
+    uuid: str
+    course_uuid: str
+    title: str
+    status: str
+    created_by_name: str
+    total: int
+    present_count: int
+    absent_count: int
+    late_count: int
+    leave_count: int
+    created_at: datetime
+    closed_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class AttendanceDetailOut(BaseModel):
+    uuid: str
+    course_uuid: str
+    title: str
+    status: str
+    created_by_name: str
+    total: int
+    present_count: int
+    absent_count: int
+    late_count: int
+    leave_count: int
+    records: list[AttendanceRecordOut] = []
+    created_at: datetime
+    closed_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
 
 
 # ============================================================

@@ -219,16 +219,21 @@ def overlay_subtitles(video_path: str, srt_path: str, output_path: str) -> bool:
 
 
 def main():
-    if len(sys.argv) < 3:
+    progress_mode = False
+    args = [a for a in sys.argv[1:] if not a.startswith("--progress")]
+    if "--progress" in sys.argv:
+        progress_mode = True
+
+    if len(args) < 2:
         print("usage:")
-        print(f"  {sys.argv[0]} input_video output_video")
+        print(f"  {sys.argv[0]} [--progress] input_video output_video")
         print()
         print("example:")
-        print(f"  {sys.argv[0]} input.mp4 output.mp4")
+        print(f"  {sys.argv[0]} --progress input.mp4 output.mp4")
         sys.exit(1)
 
-    video_path = sys.argv[1]
-    output_path = sys.argv[2]
+    video_path = args[0]
+    output_path = args[1]
 
     if not os.path.exists(video_path):
         print(f"video not found: {video_path}", file=sys.stderr)
@@ -238,19 +243,31 @@ def main():
         audio_path = os.path.join(temp_dir, "audio.wav")
         srt_path = os.path.join(temp_dir, "subtitle.srt")
 
-        print("extract audio...")
+        if progress_mode:
+            print("STAGE:extract", flush=True)
+        else:
+            print("extract audio...")
         if not extract_audio(video_path, audio_path):
             sys.exit(1)
 
-        print("generate subtitle...")
+        if progress_mode:
+            print("STAGE:asr", flush=True)
+        else:
+            print("generate subtitle...")
         if not generate_srt(audio_path, srt_path):
             sys.exit(1)
 
-        print("overlay subtitle...")
+        if progress_mode:
+            print("STAGE:overlay", flush=True)
+        else:
+            print("overlay subtitle...")
         if not overlay_subtitles(video_path, srt_path, output_path):
             sys.exit(1)
 
-    print(f"done: {output_path}")
+    if progress_mode:
+        print("STAGE:done", flush=True)
+    else:
+        print(f"done: {output_path}")
 
 
 if __name__ == "__main__":

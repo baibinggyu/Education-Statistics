@@ -5,20 +5,34 @@ import EduStat.Backend 1.0
 
 // 登录 Login Page
 Item {
+    id: loginPage
     signal login()
+
+    // Supplied by main.qml singleton
+    required property ApiClient requiredApiClient
 
     property string errorMessage: ""
 
-    ApiClient {
-        id: apiClient
+    Connections {
+        target: requiredApiClient
 
-        onLoginSuccess: function(token, role) {
+        function onLoginSuccess(token, role) {
             loginPage.errorMessage = ""
             loginPage.login()
         }
 
-        onLoginError: function(msg) {
+        function onLoginError(msg) {
             loginPage.errorMessage = msg
+        }
+    }
+
+    Component.onCompleted: {
+        if (requiredApiClient.hasSavedCredentials()) {
+            var saved = requiredApiClient.getSavedUsername()
+            if (saved) {
+                usernameField.text = saved
+                rememberMeSwitch.checked = true
+            }
         }
     }
 
@@ -95,6 +109,20 @@ Item {
                         }
                     }
 
+                    // Remember me toggle
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        FluToggleSwitch {
+                            id: rememberMeSwitch
+                        }
+                        FluText {
+                            text: "记住密码，自动登录"
+                            font.pixelSize: 12
+                            textColor: FluTheme.dark ? "#8ea1ad" : "#666666"
+                        }
+                    }
+
                     FluText {
                         text: loginPage.errorMessage
                         visible: loginPage.errorMessage !== ""
@@ -111,7 +139,8 @@ Item {
                         font.bold: true
                         onClicked: {
                             loginPage.errorMessage = ""
-                            apiClient.login(usernameField.text, passwordField.text)
+                            requiredApiClient.setRememberMe(rememberMeSwitch.checked)
+                            requiredApiClient.login(usernameField.text, passwordField.text)
                         }
                     }
                 }
@@ -119,7 +148,7 @@ Item {
 
             // Footer
             FluText {
-                text: "EduStat v2.0 · Qt6 + FluentUI"
+                text: "EduStat v2.0"
                 font.pixelSize: 10
                 textColor: FluTheme.dark ? "#5a6570" : "#999999"
                 Layout.alignment: Qt.AlignHCenter

@@ -5,6 +5,8 @@
 
 #include <ai/ai.h>
 
+class ApiClient;  // forward
+
 class AgentBackend : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool loading READ loading NOTIFY chatStateChanged)
@@ -24,8 +26,14 @@ public slots:
     void sendMessage(const QString& text);
     void stopGeneration();
 
+    // One-shot analysis (no conversation, no agent)
+    void oneShotChat(const QString& prompt);
+
     // Mode
     void setAgentMode(bool enabled);
+
+    // ApiClient integration
+    void setApiClient(ApiClient* client);
 
     // Session management
     void newConversation();
@@ -44,6 +52,10 @@ signals:
     void messageReceived(const QString& role, const QString& content);
     void errorOccurred(const QString& message);
     void chatStateChanged();
+
+    // One-shot analysis result
+    void oneShotChatFinished(const QString& content);
+    void oneShotChatError(const QString& message);
 
     // Agent progress
     void stepUpdated(const QString& description, const QString& status,
@@ -92,6 +104,62 @@ private:
     std::vector<ai::Message> storedToAi(const std::vector<ChatSession::StoredMessage>& stored) const;
     std::vector<ChatSession::StoredMessage> aiToStored(const std::vector<ai::Message>& aiMsgs) const;
 
+    // Admin API sync wrappers (worker thread → main thread bridge via QEventLoop)
+    nlohmann::json listCoursesSync();
+    nlohmann::json createCourseSync(const std::string& name, const std::string& desc);
+    nlohmann::json deleteCourseSync(const std::string& uuid);
+    nlohmann::json listCourseMembersSync(const std::string& courseUuid);
+    nlohmann::json addCourseMemberSync(const std::string& courseUuid, const std::string& username);
+    nlohmann::json removeCourseMemberSync(const std::string& courseUuid, const std::string& userUuid);
+    nlohmann::json registerUserSync(const std::string& username, const std::string& password,
+                                     const std::string& role,
+                                     const std::string& studentNo = "",
+                                     const std::string& realName = "");
+    nlohmann::json getCourseDetailSync(const std::string& courseUuid);
+    nlohmann::json generateRandomScoresSync(const std::string& courseUuid);
+    nlohmann::json exportScoresSync(const std::string& courseUuid, const std::string& format);
+    nlohmann::json upsertScoreSync(const std::string& courseUuid, const std::string& studentUuid,
+                                   int unitId, double score);
+    nlohmann::json listUnitsSync(const std::string& courseUuid);
+    nlohmann::json createUnitSync(const std::string& courseUuid, const std::string& name,
+                                  double weight, double fullScore, int unitOrder);
+    nlohmann::json updateUnitSync(const std::string& courseUuid, int unitId,
+                                  const std::string& name, double weight, double fullScore, int unitOrder);
+    nlohmann::json deleteUnitSync(const std::string& courseUuid, int unitId);
+    nlohmann::json batchUpsertScoresSync(const std::string& courseUuid, int unitId,
+                                         const std::vector<std::pair<std::string, double>>& scores);
+    nlohmann::json scoreSummarySync(const std::string& courseUuid);
+    nlohmann::json scoreDistributionSync(const std::string& courseUuid);
+    nlohmann::json listVideosSync(const std::string& courseUuid);
+    nlohmann::json fetchAnnouncementsSync(const std::string& courseUuid);
+    nlohmann::json publishAnnouncementSync(const std::string& courseUuid, const std::string& title,
+                                           const std::string& content, const std::string& annType,
+                                           bool pinned, bool notify);
+    nlohmann::json deleteAnnouncementSync(const std::string& courseUuid, const std::string& announcementUuid);
+    nlohmann::json fetchMessagesSync(const std::string& courseUuid);
+    nlohmann::json sendMessageSync(const std::string& courseUuid, const std::string& content,
+                                   const std::string& msgType, const std::string& subject,
+                                   const std::string& recipientUsername);
+    nlohmann::json deleteMessageSync(const std::string& courseUuid, const std::string& messageUuid);
+    nlohmann::json markMessageReadSync(const std::string& courseUuid, const std::string& messageUuid);
+    nlohmann::json fetchConversationSync(const std::string& courseUuid, const std::string& otherUserUuid);
+
+    // Attendance sync wrappers
+    nlohmann::json listAttendancesSync(const std::string& courseUuid);
+    nlohmann::json startAttendanceSync(const std::string& courseUuid, const std::string& title);
+    nlohmann::json getAttendanceDetailSync(const std::string& courseUuid, const std::string& attendanceUuid);
+    nlohmann::json markAttendanceSync(const std::string& courseUuid, const std::string& attendanceUuid,
+                                       const std::string& studentUuid, const std::string& status,
+                                       const std::string& note);
+    nlohmann::json batchMarkAttendanceSync(const std::string& courseUuid, const std::string& attendanceUuid,
+                                            const std::vector<std::pair<std::string, std::string>>& marks);
+    nlohmann::json closeAttendanceSync(const std::string& courseUuid, const std::string& attendanceUuid);
+    nlohmann::json deleteAttendanceSync(const std::string& courseUuid, const std::string& attendanceUuid);
+
+    // Batch import
+    nlohmann::json importStudentsSync(const std::string& courseUuid,
+                                       const std::vector<std::tuple<std::string, std::string, std::string, std::string>>& students);
+
     // SDK objects
     ai::Client client_;
 
@@ -107,4 +175,7 @@ private:
 
     // Session persistence
     QString savePath_;
+
+    // ApiClient (owned by QML, accessed via QPointer for safety)
+    ApiClient* apiClient_ = nullptr;
 };

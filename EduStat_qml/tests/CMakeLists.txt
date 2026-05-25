@@ -9,6 +9,8 @@ target_link_libraries(test_api_client PRIVATE
     Qt6::Core
     Qt6::Network
     Qt6::Test
+    xlsxwriter
+    ZLIB::ZLIB
 )
 
 add_test(NAME test_api_client COMMAND test_api_client)

@@ -196,6 +196,128 @@ class Video(Base):
     play_records = relationship("PlayRecord", back_populates="video")
 
 
+class Announcement(Base):
+    __tablename__ = "announcements"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    uuid = Column(
+        String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4())
+    )
+
+    course_id = Column(BigInteger, ForeignKey("courses.id"), nullable=False)
+    author_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+
+    title = Column(String(255), nullable=False)
+    content = Column(Text, nullable=False)
+
+    ann_type = Column(
+        Enum("课程通知", "作业提醒", "考试安排", "资料更新", "其他"),
+        nullable=False,
+        default="课程通知",
+    )
+    pinned = Column(Boolean, nullable=False, default=False)
+    notify = Column(Boolean, nullable=False, default=True)
+
+    status = Column(
+        Enum("normal", "hidden", "deleted"), nullable=False, default="normal"
+    )
+
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    # relationships
+    course = relationship("Course", backref="announcements")
+    author = relationship("User", backref="announcements")
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    uuid = Column(
+        String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4())
+    )
+
+    course_id = Column(BigInteger, ForeignKey("courses.id"), nullable=False)
+    sender_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    recipient_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+
+    subject = Column(String(255))
+    content = Column(Text, nullable=False)
+
+    msg_type = Column(
+        Enum("学习提醒", "作业通知", "考试安排", "课堂反馈", "其他"),
+        nullable=False,
+        default="其他",
+    )
+    is_read = Column(Boolean, nullable=False, default=False)
+
+    status = Column(
+        Enum("normal", "deleted"), nullable=False, default="normal"
+    )
+
+    created_at = Column(DateTime, server_default=func.now())
+
+    # relationships
+    course = relationship("Course", backref="messages")
+    sender = relationship("User", foreign_keys=[sender_id], backref="sent_messages")
+    recipient = relationship("User", foreign_keys=[recipient_id], backref="received_messages")
+
+
+class Attendance(Base):
+    __tablename__ = "attendances"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    uuid = Column(
+        String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4())
+    )
+
+    course_id = Column(BigInteger, ForeignKey("courses.id"), nullable=False)
+    created_by = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+
+    title = Column(String(255), nullable=False)
+
+    status = Column(
+        Enum("open", "closed"), nullable=False, default="open"
+    )
+
+    created_at = Column(DateTime, server_default=func.now())
+    closed_at = Column(DateTime, nullable=True)
+
+    # relationships
+    course = relationship("Course", backref="attendances")
+    creator = relationship("User", backref="created_attendances")
+    records = relationship("AttendanceRecord", back_populates="attendance")
+
+
+class AttendanceRecord(Base):
+    __tablename__ = "attendance_records"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+
+    attendance_id = Column(BigInteger, ForeignKey("attendances.id"), nullable=False)
+    student_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+
+    status = Column(
+        Enum("present", "absent", "late", "leave"),
+        nullable=False,
+        default="present",
+    )
+    note = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("attendance_id", "student_id", name="uk_attendance_student"),
+    )
+
+    # relationships
+    attendance = relationship("Attendance", back_populates="records")
+    student = relationship("User", backref="attendance_records")
+
+
 class PlayRecord(Base):
     __tablename__ = "play_records"
 

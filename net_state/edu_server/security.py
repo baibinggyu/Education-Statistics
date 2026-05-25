@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import bcrypt
 from jose import jwt
 import os
-SECRET_KEY = os.getenv("education_statistics_secret_key")
+SECRET_KEY = os.getenv("education_statistics_secret_key", "edu-server-default-secret-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 

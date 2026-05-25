@@ -20,13 +20,16 @@ app = FastAPI(
 )
 
 # 路由注册
-from routers import ai, auth, courses, files, play_records, scores, users, videos
+from routers import ai, announcements, attendance, auth, courses, files, messages, play_records, scores, users, videos
 
 app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(courses.router, prefix="/api/courses", tags=["courses"])
 # units 已挂载在 courses router 下
+app.include_router(announcements.router, prefix="/api/courses", tags=["announcements"])
+app.include_router(attendance.router, prefix="/api/courses", tags=["attendance"])
+app.include_router(messages.router, prefix="/api/courses", tags=["messages"])
 app.include_router(scores.router, prefix="/api/scores", tags=["scores"])
 app.include_router(videos.router, prefix="/api/videos", tags=["videos"])
 app.include_router(play_records.router, prefix="/api/play-records", tags=["play_records"])

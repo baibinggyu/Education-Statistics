@@ -1,11 +1,12 @@
 #!/bin/bash
-# 确保 MariaDB 用户存在且使用密码认证（幂等：DROP IF EXISTS + CREATE）
-sudo mariadb -e "DROP USER IF EXISTS 'edu_user'@'localhost';" 2>/dev/null
-sudo mariadb -e "CREATE USER 'edu_user'@'localhost' IDENTIFIED BY '$education_statistics_passwd';" 2>/dev/null
-sudo mariadb -e "GRANT ALL PRIVILEGES ON edu_server_database.* TO 'edu_user'@'localhost';" 2>/dev/null
-sudo mariadb -e "FLUSH PRIVILEGES;" 2>/dev/null
+export education_statistics_db_host="${education_statistics_db_host:-127.0.0.1}"
+export education_statistics_db_port="${education_statistics_db_port:-3306}"
+export education_statistics_db_name="${education_statistics_db_name:-edu_server_database}"
+export education_statistics_db_user="${education_statistics_db_user:-root}"
+export education_statistics_passwd="${education_statistics_passwd:-mysql_pw}"
+export education_statistics_secret_key="${education_statistics_secret_key:-edu-server-default-secret-change-in-production}"
 
-HOST="${edu_server_host:-0.0.0.0}"
+HOST="${edu_server_host:-127.0.0.1}"
 PORT="${edu_server_port:-55555}"
 
 uvicorn main:app --host "$HOST" --port "$PORT"

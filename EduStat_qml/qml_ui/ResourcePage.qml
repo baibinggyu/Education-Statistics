@@ -17,9 +17,18 @@ Item {
     property bool uploading: false
     property bool uploadDone: false
     property int uploadPercent: 0
+    property bool addSubtitle: true
 
     Component.onCompleted: {
         if (requiredCourseUuid) requiredApiClient.fetchCourseVideos(requiredCourseUuid)
+    }
+
+    onRequiredCourseUuidChanged: {
+        if (visible && requiredCourseUuid) requiredApiClient.fetchCourseVideos(requiredCourseUuid)
+    }
+
+    onVisibleChanged: {
+        if (visible && requiredCourseUuid) requiredApiClient.fetchCourseVideos(requiredCourseUuid)
     }
 
     Connections {
@@ -36,7 +45,9 @@ Item {
             uploadDone = false
             uploadPercent = percent >= 0 ? percent : uploadPercent
             if (stage === "compressing")
-                uploadStatus = "正在压缩..."
+                uploadStatus = percent >= 0 ? "压缩中 " + percent + "%" : "压缩中..."
+            else if (stage === "subtitle")
+                uploadStatus = percent >= 0 ? "字幕生成 " + percent + "%" : "字幕生成中..."
             else if (stage === "uploading")
                 uploadStatus = percent >= 0 ? "上传中 " + percent + "%" : "上传中..."
             else if (stage === "done")
@@ -203,7 +214,46 @@ Item {
                     placeholderText: "输入视频标题（可选，默认用文件名）"
                 }
 
+                // Subtitle toggle
+                RowLayout {
+                    Layout.fillWidth: true
+                    FluText {
+                        text: "智能字幕 (FunASR)"
+                        font.pixelSize: 12
+                        textColor: "#b3c0c8"
+                    }
+                    FluText {
+                        text: "自动语音识别 + 烧录字幕"
+                        font.pixelSize: 10
+                        textColor: "#53636d"
+                        Layout.fillWidth: true
+                    }
+                    FluToggleSwitch {
+                        id: subtitleToggle
+                        checked: addSubtitle
+                        enabled: !uploading
+                        onClicked: addSubtitle = checked
+                    }
+                }
+
                 // Upload button + progress
+                // Progress bar
+                Rectangle {
+                    visible: uploading && uploadPercent > 0
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 6
+                    radius: 3
+                    color: Qt.rgba(255, 255, 255, 0.1)
+
+                    Rectangle {
+                        width: parent.width * uploadPercent / 100
+                        height: parent.height
+                        radius: 3
+                        color: "#0f766e"
+                        Behavior on width { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                    }
+                }
+
                 FluText {
                     visible: uploadStatus !== ""
                     text: uploadStatus
@@ -222,7 +272,7 @@ Item {
                           uploading ? uploadStatus : "上传到当前课程"
                     font.pixelSize: 13
                     font.bold: true
-                    enabled: selectedFilePath !== "" || uploadDone
+                    enabled: !uploading && (selectedFilePath !== "" || uploadDone)
                     onClicked: {
                         if (uploadDone) {
                             // 重置表单，准备下一次上传
@@ -238,7 +288,7 @@ Item {
                         if (!title) title = "未命名视频"
                         uploadStatus = "正在压缩..."
                         uploading = true
-                        requiredApiClient.uploadVideoFile(requiredCourseUuid, title, selectedFilePath)
+                        requiredApiClient.uploadVideoFile(requiredCourseUuid, title, selectedFilePath, addSubtitle)
                     }
                 }
             }

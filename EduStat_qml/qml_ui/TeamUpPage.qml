@@ -38,6 +38,14 @@ Item {
         if (requiredCourseUuid) refreshStudents()
     }
 
+    onRequiredCourseUuidChanged: {
+        if (visible && requiredCourseUuid) refreshStudents()
+    }
+
+    onVisibleChanged: {
+        if (visible && requiredCourseUuid) refreshStudents()
+    }
+
     function refreshStudents() {
         membersLoaded = false
         scoresLoaded = false
