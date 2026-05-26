@@ -238,6 +238,8 @@ def delete_assignment(
     if a is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
 
+    # Delete submissions first to avoid FK constraint
+    db.query(Submission).filter(Submission.assignment_id == a.id).delete()
     db.delete(a)
     db.commit()
 
