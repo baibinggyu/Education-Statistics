@@ -178,6 +178,21 @@ Item {
         })
     }
 
+    // ---- Column widths (shared by header and data rows) ----
+    property real colStudentNo: 110
+    property real colName: 72
+    property real colUsername: 110
+    property real colWeightedTotal: 70
+    property real colRank: 44
+    property real colUnitMin: 60  // minimum unit column width
+
+    function calcUnitColWidth() {
+        var fixedW = colStudentNo + colName + colUsername + colWeightedTotal + colRank
+        var avail = headerRow.width - fixedW - 28  // 28 = leftMargin + rightMargin
+        if (unitIds.length <= 0) return colUnitMin
+        return Math.max(colUnitMin, Math.floor(avail / unitIds.length))
+    }
+
     // ---- Export helpers ----
     function generateExportContent(format) {
         var list = displayStudents
@@ -355,7 +370,7 @@ Item {
                         Repeater {
                             model: unitNames
                             delegate: FluText {
-                                Layout.fillWidth: true
+                                Layout.preferredWidth: calcUnitColWidth()
                                 text: modelData
                                 font.pixelSize: 11
                                 font.bold: true
@@ -435,7 +450,7 @@ Item {
                                     }
                                     property real cellScore: modelData.value !== null ? modelData.value : NaN
 
-                                    Layout.fillWidth: true
+                                    Layout.preferredWidth: calcUnitColWidth()
                                     Layout.preferredHeight: 40
                                     color: isEditing ? Qt.rgba(15/255, 118/255, 110/255, 0.2) : "transparent"
                                     radius: 3
@@ -443,9 +458,12 @@ Item {
                                     FluText {
                                         id: scoreDisplay
                                         visible: !parent.isEditing
-                                        anchors.centerIn: parent
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 8
+                                        anchors.verticalCenter: parent.verticalCenter
                                         text: isNaN(parent.cellScore) ? "--" : parent.cellScore.toFixed(1)
                                         font.pixelSize: 11
+                                        horizontalAlignment: Text.AlignRight
                                     }
 
                                     FluTextBox {

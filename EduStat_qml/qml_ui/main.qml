@@ -306,7 +306,7 @@ ApplicationWindow {
         "班级信息", "点名", "组队", "学生信息",
         "学科管理", "开课申请",
         "视频播放", "课程资源", "发布公告",
-        "倒计时", "发消息", "AI 助手"
+        "作业管理", "倒计时", "发消息", "AI 助手"
     ]
 
     // ===== PAGE COMPONENTS =====
@@ -314,7 +314,7 @@ ApplicationWindow {
         classInfoComp, rollCallComp, teamUpComp,
         studentInfoComp, subjectManageComp,
         courseAppComp, videoPlayerComp, resourceComp,
-        announcementComp, countdownComp, messageComp, chatComp
+        announcementComp, assignmentComp, countdownComp, messageComp, chatComp
     ]
 
     Component {
@@ -352,6 +352,7 @@ ApplicationWindow {
     Component { id: videoPlayerComp; VideoPlayerPage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }
     Component { id: resourceComp; ResourcePage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }
     Component { id: announcementComp; AnnouncementPage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }
+    Component { id: assignmentComp; AssignmentPage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }
     Component { id: countdownComp; CountdownPage {} }
     Component { id: messageComp; MessagePage { requiredApiClient: apiClient; requiredCourseUuid: currentCourseUuid } }
     Component { id: chatComp; ChatPage { requiredApiClient: apiClient } }

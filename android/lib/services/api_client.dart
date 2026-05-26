@@ -75,10 +75,15 @@ class ApiClient {
     final client = _httpClient();
     try {
       final req = await client.postUrl(_uri(path));
-      _headers().forEach((k, v) => req.headers.set(k, v));
-      req.write(json.encode(data));
+      final headers = _headers();
+      for (final entry in headers.entries) {
+        req.headers.set(entry.key, entry.value);
+      }
+      final bytes = utf8.encode(json.encode(data));
+      req.add(bytes);
       final resp = await req.close();
-      final body = await resp.transform(utf8.decoder).join();
+      final bodyBytes = await resp.fold<List<int>>([], (prev, chunk) => prev..addAll(chunk));
+      final body = utf8.decode(bodyBytes);
       if (resp.statusCode >= 400) {
         throw ApiException(resp.statusCode, body);
       }
@@ -188,6 +193,12 @@ class ApiClient {
     return result;
   }
 
+  Future<Map<String, dynamic>> updateMe({String? username}) async {
+    final body = <String, dynamic>{};
+    if (username != null) body['username'] = username;
+    return await patchJson('/api/users/me', body);
+  }
+
   void logout() {
     token = null;
     userUuid = null;
@@ -280,6 +291,12 @@ class ApiClient {
     return await getJson('/api/videos/$videoUuid');
   }
 
+  String getVideoDownloadUrl(String videoUuid, {bool watermark = false}) {
+    final t = token ?? '';
+    final wm = watermark ? '&watermark=true' : '';
+    return '$serverUrl/api/videos/$videoUuid/download?token=$t$wm';
+  }
+
   // -------------------------------------------------------
   // Play Records
   // -------------------------------------------------------
@@ -294,6 +311,10 @@ class ApiClient {
 
   Future<Map<String, dynamic>> getPlayRecord(String videoUuid) async {
     return await getJson('/api/play-records/$videoUuid');
+  }
+
+  Future<List<dynamic>> getMyCoursePlayRecords(String courseUuid) async {
+    return await getJsonArray('/api/play-records/course/$courseUuid/my');
   }
 
   // -------------------------------------------------------
@@ -320,6 +341,192 @@ class ApiClient {
   }
 
   // -------------------------------------------------------
+  // Resources
+  // -------------------------------------------------------
+  Future<List<dynamic>> listResources(String courseUuid) async {
+    return await getJsonArray('/api/courses/$courseUuid/resources');
+  }
+
+  String getResourceDownloadUrl(String courseUuid, String resourceUuid) {
+    final t = token ?? '';
+    return '$serverUrl/api/courses/$courseUuid/resources/$resourceUuid/download?token=$t';
+  }
+
+  Future<Map<String, dynamic>> generateLearningReport(String learningData) async {
+    return await postJson('/api/ai/learning-report', {
+      'learning_data': learningData,
+    });
+  }
+
+  Future<Map<String, dynamic>> analyzeStudent(String studentData) async {
+    return await postJson('/api/ai/student-analysis', {
+      'student_data': studentData,
+    });
+  }
+
+  /// Download a file from the given URL to [savePath].
+  /// Uses HttpClient with SSL bypass + Authorization header.
+  /// Checks HTTP status; throws [ApiException] on failure.
+  Future<void> downloadToFile(String url, String savePath,
+      {void Function(int received, int total)? onProgress}) async {
+    final client = _httpClient();
+    try {
+      final req = await client.getUrl(Uri.parse(url));
+      if (token != null) {
+        req.headers.set('Authorization', 'Bearer $token');
+      }
+      final resp = await req.close();
+      if (resp.statusCode >= 400) {
+        final body = await resp.transform(utf8.decoder).join();
+        throw ApiException(resp.statusCode, body);
+      }
+      final total = resp.contentLength;
+      var received = 0;
+      final file = File(savePath);
+      final sink = file.openWrite();
+      await for (final chunk in resp) {
+        received += chunk.length;
+        sink.add(chunk);
+        onProgress?.call(received, total);
+      }
+      await sink.flush();
+      await sink.close();
+    } finally {
+      client.close();
+    }
+  }
+
+  Future<void> deleteCourseResource(String courseUuid, String resourceUuid) async {
+    await deleteResource('/api/courses/$courseUuid/resources/$resourceUuid');
+  }
+
+  Future<Map<String, dynamic>> uploadResource(
+      String courseUuid, String filePath, String fileName,
+      {String title = '', String description = ''}) async {
+    final client = _httpClient();
+    try {
+      final uri = _uri('/api/courses/$courseUuid/resources');
+      final request = await client.postUrl(uri);
+      request.headers.set('Authorization', 'Bearer $token');
+      request.headers.set('Accept', 'application/json');
+
+      final bytes = await File(filePath).readAsBytes();
+      final boundary = 'boundary_${DateTime.now().millisecondsSinceEpoch}';
+      request.headers.set('Content-Type', 'multipart/form-data; boundary=$boundary');
+
+      final parts = <List<int>>[];
+      void addField(String name, String value) {
+        parts.add(utf8.encode('--$boundary\r\n'));
+        parts.add(utf8.encode('Content-Disposition: form-data; name="$name"\r\n\r\n'));
+        parts.add(utf8.encode('$value\r\n'));
+      }
+
+      addField('title', title.isNotEmpty ? title : fileName);
+      if (description.isNotEmpty) addField('description', description);
+
+      parts.add(utf8.encode('--$boundary\r\n'));
+      parts.add(utf8.encode(
+          'Content-Disposition: form-data; name="file"; filename="$fileName"\r\n'));
+      parts.add(utf8.encode('Content-Type: application/octet-stream\r\n\r\n'));
+      parts.add(bytes);
+      parts.add(utf8.encode('\r\n--$boundary--\r\n'));
+
+      for (final part in parts) {
+        request.add(part);
+      }
+
+      final resp = await request.close();
+      final body = await resp.transform(utf8.decoder).join();
+      if (resp.statusCode >= 400) {
+        throw ApiException(resp.statusCode, body);
+      }
+      if (body.isEmpty) return {};
+      return json.decode(body) as Map<String, dynamic>;
+    } finally {
+      client.close();
+    }
+  }
+
+  // -------------------------------------------------------
+  // Assignments
+  // -------------------------------------------------------
+  Future<List<dynamic>> listAssignments(String courseUuid) async {
+    return await getJsonArray('/api/courses/$courseUuid/assignments');
+  }
+
+  Future<Map<String, dynamic>> getAssignmentDetail(
+      String courseUuid, String assignmentUuid) async {
+    return await getJson(
+        '/api/courses/$courseUuid/assignments/$assignmentUuid');
+  }
+
+  Future<Map<String, dynamic>> submitHomework(
+      String courseUuid, String assignmentUuid,
+      {String content = '', String? filePath, String? fileName}) async {
+    final client = _httpClient();
+    try {
+      final uri = _uri(
+          '/api/courses/$courseUuid/assignments/$assignmentUuid/submissions');
+      final request = await client.postUrl(uri);
+      request.headers.set('Authorization', 'Bearer $token');
+      request.headers.set('Accept', 'application/json');
+
+      final boundary = 'boundary_${DateTime.now().millisecondsSinceEpoch}';
+      request.headers.set(
+          'Content-Type', 'multipart/form-data; boundary=$boundary');
+
+      final parts = <List<int>>[];
+      void addField(String name, String value) {
+        parts.add(utf8.encode('--$boundary\r\n'));
+        parts.add(utf8.encode(
+            'Content-Disposition: form-data; name="$name"\r\n\r\n'));
+        parts.add(utf8.encode('$value\r\n'));
+      }
+
+      if (content.isNotEmpty) {
+        addField('content', content);
+      }
+
+      if (filePath != null && filePath.isNotEmpty) {
+        final file = File(filePath);
+        if (await file.exists()) {
+          final bytes = await file.readAsBytes();
+          final fName = fileName ?? filePath.split('/').last;
+          parts.add(utf8.encode('--$boundary\r\n'));
+          parts.add(utf8.encode(
+              'Content-Disposition: form-data; name="file"; filename="$fName"\r\n'));
+          parts.add(utf8.encode(
+              'Content-Type: application/octet-stream\r\n\r\n'));
+          parts.add(bytes);
+          parts.add(utf8.encode('\r\n'));
+        }
+      }
+
+      parts.add(utf8.encode('--$boundary--\r\n'));
+
+      for (final part in parts) {
+        request.add(part);
+      }
+
+      final resp = await request.close();
+      final body = await resp.transform(utf8.decoder).join();
+      if (resp.statusCode >= 400) {
+        throw ApiException(resp.statusCode, body);
+      }
+      if (body.isEmpty) return {};
+      return json.decode(body) as Map<String, dynamic>;
+    } finally {
+      client.close();
+    }
+  }
+
+  Future<dynamic> getMySubmission(
+      String courseUuid, String assignmentUuid) async {
+    return await getJson(
+        '/api/courses/$courseUuid/assignments/$assignmentUuid/submissions/my');
+  }
+
+  // -------------------------------------------------------
   // Messages
   // -------------------------------------------------------
   Future<List<dynamic>> listMessages(String courseUuid) async {
@@ -341,7 +548,7 @@ class ApiClient {
   }
 
   Future<void> markMessageRead(String courseUuid, String messageUuid) async {
-    await putJson('/api/courses/$courseUuid/messages/$messageUuid/read', {});
+    await postJson('/api/courses/$courseUuid/messages/$messageUuid/read', {});
   }
 
   Future<void> deleteMessage(String courseUuid, String messageUuid) async {
@@ -386,6 +593,13 @@ class ApiClient {
   Future<void> closeAttendance(String courseUuid, String attendanceUuid) async {
     await putJson(
         '/api/courses/$courseUuid/attendance/$attendanceUuid/close', {});
+  }
+
+  // -------------------------------------------------------
+  // AI Chat
+  // -------------------------------------------------------
+  Future<Map<String, dynamic>> aiChat(List<Map<String, String>> messages) async {
+    return await postJson('/api/ai/chat', {'messages': messages});
   }
 
   // -------------------------------------------------------

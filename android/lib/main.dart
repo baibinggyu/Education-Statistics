@@ -1,19 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:forui/forui.dart';
+import 'package:media_kit/media_kit.dart';
+
 import 'theme/app_theme.dart';
-import 'theme/responsive.dart';
 import 'services/auth_provider.dart';
+import 'services/api_client.dart';
 import 'pages/home_page.dart';
 import 'pages/courses_page.dart';
 import 'pages/messages_page.dart';
 import 'pages/profile_page.dart';
 import 'pages/login_page.dart';
 import 'pages/announcement_page.dart';
-import 'pages/roll_call_page.dart';
-import 'pages/countdown_page.dart';
 import 'pages/video_player_page.dart';
 import 'pages/student_info_page.dart';
+import 'pages/about_page.dart';
+import 'pages/personal_info_page.dart';
+import 'pages/notifications_page.dart';
+import 'pages/downloads_page.dart';
+import 'pages/learning_report_page.dart';
+import 'pages/student_analysis_page.dart';
+import 'pages/report_history_page.dart';
+import 'pages/submit_homework_page.dart';
 
 void main() {
+  MediaKit.ensureInitialized();
   runApp(const EduApp());
 }
 
@@ -25,25 +35,62 @@ class EduApp extends StatefulWidget {
 }
 
 class _EduAppState extends State<EduApp> {
-  ThemeMode _themeMode = ThemeMode.dark;
+  bool _isDark = true;
+  bool _themeLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTheme();
+  }
+
+  Future<void> _loadTheme() async {
+    final isDark = await ThemeScope.loadFromPrefs();
+    if (mounted) {
+      setState(() {
+        _isDark = isDark;
+        _themeLoaded = true;
+      });
+    }
+  }
 
   void _toggleTheme() {
-    setState(() {
-      _themeMode = _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
-    });
+    final next = !_isDark;
+    ThemeScope.saveToPrefs(next);
+    setState(() => _isDark = next);
   }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Edu - AI + 教育',
+    final themeData =
+        _isDark ? FThemes.blue.dark.desktop : FThemes.blue.light.desktop;
+
+    return WidgetsApp(
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: _themeMode,
-      home: AppShell(onToggleTheme: _toggleTheme),
+      color: const Color(0xFF0f766e),
+      pageRouteBuilder: <T>(RouteSettings settings, WidgetBuilder builder) {
+        return MaterialPageRoute<T>(settings: settings, builder: builder);
+      },
+      localizationsDelegates: const [
+        DefaultMaterialLocalizations.delegate,
+        DefaultWidgetsLocalizations.delegate,
+      ],
+      builder: (context, child) => ThemeScope(
+        isDark: _isDark,
+        toggle: _toggleTheme,
+        child: FTheme(
+          data: themeData,
+          child: ScaffoldMessenger(
+            child: FToaster(
+              child: FTooltipGroup(
+                child: child!,
+              ),
+            ),
+          ),
+        ),
+      ),
+      home: _themeLoaded ? AppShell(onToggleTheme: _toggleTheme) : _splash(),
       onGenerateRoute: (settings) {
-        // Named routes for pages pushed from shortcuts
         final args = settings.arguments;
         switch (settings.name) {
           case '/announcements':
@@ -54,19 +101,6 @@ class _EduAppState extends State<EduApp> {
             }
             return MaterialPageRoute(
               builder: (_) => const AnnouncementPage(),
-            );
-          case '/roll-call':
-            if (args is String) {
-              return MaterialPageRoute(
-                builder: (_) => RollCallPage(courseUuid: args),
-              );
-            }
-            return MaterialPageRoute(
-              builder: (_) => const RollCallPage(),
-            );
-          case '/countdown':
-            return MaterialPageRoute(
-              builder: (_) => const CountdownPage(),
             );
           case '/video':
             if (args is String) {
@@ -86,17 +120,72 @@ class _EduAppState extends State<EduApp> {
             return MaterialPageRoute(
               builder: (_) => const StudentInfoPage(),
             );
+          case '/about':
+            return MaterialPageRoute(
+              builder: (_) => const AboutPage(),
+            );
+          case '/personal-info':
+            return MaterialPageRoute(
+              builder: (_) => const PersonalInfoPage(),
+            );
+          case '/notifications':
+            return MaterialPageRoute(
+              builder: (_) => NotificationsPage(api: ApiClient()),
+            );
+          case '/downloads':
+            return MaterialPageRoute(
+              builder: (_) => DownloadsPage(api: ApiClient()),
+            );
+          case '/learning-report':
+            return MaterialPageRoute(
+              builder: (_) => const LearningReportPage(),
+            );
+          case '/report-history':
+            return MaterialPageRoute(
+              builder: (_) => const ReportHistoryPage(),
+            );
+          case '/student-analysis':
+            if (args is Map<String, String>) {
+              return MaterialPageRoute(
+                builder: (_) => StudentAnalysisPage(
+                  courseUuid: args['courseUuid']!,
+                  studentUuid: args['studentUuid']!,
+                  studentName: args['studentName']!,
+                ),
+              );
+            }
+            return null;
+          case '/submit-homework':
+            if (args is Map<String, dynamic>) {
+              return MaterialPageRoute(
+                builder: (_) => SubmitHomeworkPage(
+                  auth: AuthProvider(),
+                  courseUuid: args['courseUuid'] as String,
+                  assignmentUuid: args['assignmentUuid'] as String,
+                  assignment: args['assignment'] as Map<String, dynamic>,
+                ),
+              );
+            }
+            return null;
           default:
             return null;
         }
       },
     );
   }
+
+  Widget _splash() {
+    return Builder(
+      builder: (context) => Container(
+        color: context.appColors.background,
+        child: const Center(child: FCircularProgress()),
+      ),
+    );
+  }
 }
 
 class AppShell extends StatefulWidget {
   final VoidCallback onToggleTheme;
-
   const AppShell({super.key, required this.onToggleTheme});
 
   @override
@@ -118,7 +207,11 @@ class _AppShellState extends State<AppShell> {
       HomePage(auth: _auth),
       CoursesPage(auth: _auth),
       MessagesPage(auth: _auth),
-      ProfilePage(auth: _auth, onToggleTheme: widget.onToggleTheme, onLogout: _onLogout),
+      ProfilePage(
+        auth: _auth,
+        onToggleTheme: widget.onToggleTheme,
+        onLogout: _onLogout,
+      ),
     ];
     _tryAutoLogin();
   }
@@ -133,9 +226,7 @@ class _AppShellState extends State<AppShell> {
     }
   }
 
-  void _onLoginSuccess() {
-    setState(() => _loggedIn = true);
-  }
+  void _onLoginSuccess() => setState(() => _loggedIn = true);
 
   void _onLogout() {
     _auth.logout();
@@ -148,94 +239,85 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     if (_checkingAuth) {
-      return Scaffold(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        body: const Center(child: CircularProgressIndicator()),
-      );
+      return const Center(child: FCircularProgress());
     }
 
     if (!_loggedIn) {
       return LoginPage(auth: _auth, onLogin: _onLoginSuccess);
     }
 
-    final r = Responsive.of(context);
-    final body = Center(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: r.maxContentWidth),
-        child: IndexedStack(
-          index: _currentIndex,
-          children: _pages,
-        ),
-      ),
+    final isWide = MediaQuery.of(context).size.width >= 720;
+    final colors = context.appColors;
+
+    final body = IndexedStack(
+      index: _currentIndex,
+      children: _pages,
     );
 
-    if (r.isWide) {
-      return Scaffold(
-        body: Row(
+    if (isWide) {
+      return Container(
+        color: colors.background,
+        child: Row(
           children: [
-            NavigationRail(
-              selectedIndex: _currentIndex,
-              onDestinationSelected: (index) => setState(() => _currentIndex = index),
-              backgroundColor: Theme.of(context).colorScheme.surface,
-              indicatorColor: AppColors.primary,
-              selectedIconTheme: const IconThemeData(color: AppColors.primary),
-              unselectedIconTheme: IconThemeData(
-                color: Theme.of(context).colorScheme.onSurface.withAlpha(100)),
-              selectedLabelTextStyle:
-                  const TextStyle(color: AppColors.primary, fontSize: 11),
-              unselectedLabelTextStyle: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface.withAlpha(100),
-                fontSize: 11),
-              destinations: const [
-                NavigationRailDestination(
-                    icon: Icon(Icons.home_outlined),
-                    selectedIcon: Icon(Icons.home),
-                    label: Text('首页')),
-                NavigationRailDestination(
-                    icon: Icon(Icons.book_outlined),
-                    selectedIcon: Icon(Icons.book),
-                    label: Text('课程')),
-                NavigationRailDestination(
-                    icon: Icon(Icons.message_outlined),
-                    selectedIcon: Icon(Icons.message),
-                    label: Text('消息')),
-                NavigationRailDestination(
-                    icon: Icon(Icons.person_outline),
-                    selectedIcon: Icon(Icons.person),
-                    label: Text('我的')),
-              ],
-            ),
-            VerticalDivider(width: 1, color: Theme.of(context).dividerColor),
+            FSidebar(
+            children: [
+              FSidebarItem(
+                icon: const Icon(FIcons.house),
+                label: const Text('首页'),
+                onPress: () => setState(() => _currentIndex = 0),
+                selected: _currentIndex == 0,
+              ),
+              FSidebarItem(
+                icon: const Icon(FIcons.book),
+                label: const Text('课程'),
+                onPress: () => setState(() => _currentIndex = 1),
+                selected: _currentIndex == 1,
+              ),
+              FSidebarItem(
+                icon: const Icon(FIcons.mail),
+                label: const Text('消息'),
+                onPress: () => setState(() => _currentIndex = 2),
+                selected: _currentIndex == 2,
+              ),
+              FSidebarItem(
+                icon: const Icon(FIcons.user),
+                label: const Text('我的'),
+                onPress: () => setState(() => _currentIndex = 3),
+                selected: _currentIndex == 3,
+              ),
+            ],
+          ),
+          const VerticalDivider(width: 1),
             Expanded(child: body),
           ],
         ),
       );
     }
 
-    return Scaffold(
-      body: body,
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
-        items: const [
-          BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home),
-              label: '首页'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.book_outlined),
-              activeIcon: Icon(Icons.book),
-              label: '课程'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.message_outlined),
-              activeIcon: Icon(Icons.message),
-              label: '消息'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              activeIcon: Icon(Icons.person),
-              label: '我的'),
+    return FScaffold(
+      footer: FBottomNavigationBar(
+        index: _currentIndex,
+        onChange: (i) => setState(() => _currentIndex = i),
+        children: [
+          const FBottomNavigationBarItem(
+            icon: Icon(FIcons.house),
+            label: Text('首页'),
+          ),
+          const FBottomNavigationBarItem(
+            icon: Icon(FIcons.book),
+            label: Text('课程'),
+          ),
+          const FBottomNavigationBarItem(
+            icon: Icon(FIcons.mail),
+            label: Text('消息'),
+          ),
+          const FBottomNavigationBarItem(
+            icon: Icon(FIcons.user),
+            label: Text('我的'),
+          ),
         ],
       ),
+      child: body,
     );
   }
 }

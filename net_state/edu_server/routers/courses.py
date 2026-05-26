@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from deps import get_current_user, require_teacher_or_admin
-from models import Course, CourseMember, Student, Unit, User
+from models import Course, CourseMember, Student, Unit, User, Video
 from schemas import (
     CourseCreate,
     CourseDetailOut,
@@ -41,7 +41,9 @@ def _course_to_my_out(course: Course, user_id: int, db: Session) -> CourseMyOut:
         member_count=db.query(CourseMember)
         .filter(CourseMember.course_id == course.id)
         .count(),
-        video_count=len(course.videos) if course.videos else 0,
+        video_count=db.query(Video)
+        .filter(Video.course_id == course.id, Video.status == "normal")
+        .count(),
         my_role=member.member_role if member else "student",
         created_at=course.created_at,
     )

@@ -85,6 +85,7 @@ private:
 
     // LLM initialization
     void initLLM();
+    void tryInitServerProxy();
 
     // Worker thread runners
     void runStreamingChat(const QString& userText);

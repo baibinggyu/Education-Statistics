@@ -51,6 +51,7 @@ qt_add_qml_module(EduStat_qml
         qml_ui/VideoPlayerPage.qml
         qml_ui/ResourcePage.qml
         qml_ui/AnnouncementPage.qml
+        qml_ui/AssignmentPage.qml
         qml_ui/CountdownPage.qml
         qml_ui/MessagePage.qml
         qml_ui/ChatPage.qml

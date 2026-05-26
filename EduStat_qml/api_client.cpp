@@ -908,25 +908,7 @@ void ApiClient::bindStudent(const QString& studentNo, const QString& realName) {
 // ---------------------------------------------------------------------------
 
 void ApiClient::chatWithAI(const QVariantList& messages) {
-    // Direct call to DeepSeek Anthropic-compatible API (bypasses server proxy)
-    // Reads API key from same env vars as AgentBackend
-    QString apiKey = qEnvironmentVariable("ANTHROPIC_AUTH_TOKEN");
-    if (apiKey.isEmpty()) apiKey = qEnvironmentVariable("ANTHROPIC_API_KEY");
-    if (apiKey.isEmpty()) apiKey = qEnvironmentVariable("DEEPSEEK_API_KEY");
-
-    if (apiKey.isEmpty()) {
-        emit chatResponseError("未配置 AI API Key。请设置 ANTHROPIC_AUTH_TOKEN 或 DEEPSEEK_API_KEY 环境变量。");
-        return;
-    }
-
-    QString baseUrl = qEnvironmentVariable("ANTHROPIC_BASE_URL");
-    if (baseUrl.isEmpty()) baseUrl = qEnvironmentVariable("LLM_BASE_URL");
-    if (baseUrl.isEmpty()) baseUrl = QStringLiteral("https://api.deepseek.com/anthropic");
-
-    QString model = qEnvironmentVariable("ANTHROPIC_MODEL");
-    if (model.isEmpty()) model = qEnvironmentVariable("LLM_MODEL");
-    if (model.isEmpty()) model = QStringLiteral("deepseek-v4-pro");
-
+    // 通过服务器 /api/ai/chat 代理调用 DeepSeek（API key 只保存在服务器）
     QJsonArray msgArr;
     for (const QVariant& m : messages) {
         QVariantMap mm = m.toMap();
@@ -937,35 +919,25 @@ void ApiClient::chatWithAI(const QVariantList& messages) {
     }
 
     QJsonObject body;
-    body["model"] = model;
-    body["max_tokens"] = 4096;
-    body["stream"] = false;
-    // DeepSeek Anthropic endpoint requires system as top-level field, not as message role
-    body["system"] = QStringLiteral("你是 EduStat 教学统计系统内置的 AI 助手。"
-        "请使用中文回答，支持 Markdown 排版。简明扼要，直接给分析结论。");
     body["messages"] = msgArr;
 
-    QNetworkRequest req(QUrl(baseUrl + QStringLiteral("/v1/messages")));
-    req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-    req.setRawHeader("x-api-key", apiKey.toUtf8());
-    req.setRawHeader("anthropic-version", "2023-06-01");
-
+    QNetworkRequest req = buildRequest("/api/ai/chat");
     QJsonDocument doc(body);
     QNetworkReply* reply = nam_->post(req, doc.toJson(QJsonDocument::Compact));
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply, model]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
             int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
             QByteArray raw = reply->readAll();
-            QString detail = QStringLiteral("AI 请求失败 (HTTP %1)").arg(statusCode);
+            QString detail;
             QJsonDocument errDoc = QJsonDocument::fromJson(raw);
             if (errDoc.isObject()) {
                 QJsonObject errObj = errDoc.object();
-                QJsonObject errInfo = errObj.value("error").toObject();
-                if (!errInfo.isEmpty())
-                    detail = errInfo.value("message").toString(detail);
+                detail = errObj.value("detail").toString();
             }
+            if (detail.isEmpty())
+                detail = QStringLiteral("AI 请求失败 (HTTP %1)").arg(statusCode);
             emit chatResponseError(detail);
             return;
         }
@@ -978,36 +950,15 @@ void ApiClient::chatWithAI(const QVariantList& messages) {
         }
 
         QJsonObject obj = respDoc.object();
-        QString content;
-
-        // Anthropic format: {"content": [{"type": "text", "text": "..."}]}
-        QJsonValue cv = obj.value("content");
-        if (cv.isArray()) {
-            for (const QJsonValue& item : cv.toArray()) {
-                QJsonObject itemObj = item.toObject();
-                if (itemObj.value("type").toString() == QStringLiteral("text")) {
-                    content = itemObj.value("text").toString();
-                    break;
-                }
-            }
-        }
-
-        // OpenAI format fallback: {"choices": [{"message": {"content": "..."}}]}
-        if (content.isEmpty()) {
-            QJsonArray choices = obj.value("choices").toArray();
-            if (!choices.isEmpty()) {
-                content = choices[0].toObject()
-                    .value("message").toObject()
-                    .value("content").toString();
-            }
-        }
+        QString content = obj.value("content").toString();
+        QString model = obj.value("model").toString();
 
         if (content.isEmpty()) {
             emit chatResponseError(QStringLiteral("AI 响应无文本内容"));
             return;
         }
 
-        emit chatResponseReceived(content, obj.value("model").toString(model));
+        emit chatResponseReceived(content, model);
     });
 }
 
@@ -1078,6 +1029,136 @@ void ApiClient::deleteAnnouncement(const QString& courseUuid, const QString& ann
             return;
         }
         emit announcementDeleted(announcementUuid);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Assignments
+// ---------------------------------------------------------------------------
+
+void ApiClient::fetchAssignments(const QString& courseUuid) {
+    QNetworkRequest req = buildRequest("/api/courses/" + courseUuid + "/assignments");
+    QNetworkReply* reply = nam_->get(req);
+    QPointer<ApiClient> self(this);
+    connect(reply, &QNetworkReply::finished, this, [self, reply]() {
+        reply->deleteLater();
+        if (!self) return;
+        int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        if (status != 200) {
+            self->handleNetworkError(reply, "/api/courses/.../assignments");
+            emit self->assignmentsError("获取作业列表失败");
+            return;
+        }
+        QJsonArray arr = QJsonDocument::fromJson(reply->readAll()).array();
+        emit self->assignmentListReset();
+        for (const QJsonValue& v : arr) {
+            QJsonObject a = v.toObject();
+            QJsonObject author = a.value("author").toObject();
+            emit self->assignmentListed(
+                a["uuid"].toString(),
+                a["title"].toString(),
+                a["description"].toString(),
+                a["due_date"].toString(),
+                a["total_points"].toDouble(),
+                a["has_attachment"].toBool(),
+                a["attachment_name"].toString(),
+                a["status"].toString(),
+                author["username"].toString(),
+                a["submission_count"].toInt(),
+                a["created_at"].toString());
+        }
+        emit self->assignmentsListDone();
+    });
+}
+
+void ApiClient::publishAssignment(const QString& courseUuid, const QString& title,
+                                   const QString& description, const QString& dueDate,
+                                   double totalPoints) {
+    QJsonObject body;
+    body["title"] = title;
+    body["description"] = description;
+    if (!dueDate.isEmpty()) body["due_date"] = dueDate;
+    if (totalPoints > 0) body["total_points"] = totalPoints;
+
+    postJson("/api/courses/" + courseUuid + "/assignments", body,
+             [this](int status, const QJsonObject& obj) {
+        if (status == 403) {
+            emit assignmentPublishError("无权限发布作业（仅教师/管理员）");
+            return;
+        }
+        if (status != 200 && status != 201) {
+            emit assignmentPublishError(obj.value("detail").toString("发布作业失败"));
+            return;
+        }
+        emit assignmentPublished(obj["uuid"].toString(), obj["title"].toString());
+    });
+}
+
+void ApiClient::deleteAssignment(const QString& courseUuid, const QString& assignmentUuid) {
+    deleteResource("/api/courses/" + courseUuid + "/assignments/" + assignmentUuid,
+                   [this, assignmentUuid](int status) {
+        if (status != 204) {
+            emit assignmentDeleteError("删除作业失败");
+            return;
+        }
+        emit assignmentDeleted(assignmentUuid);
+    });
+}
+
+void ApiClient::fetchSubmissions(const QString& courseUuid, const QString& assignmentUuid) {
+    QNetworkRequest req = buildRequest(
+        "/api/courses/" + courseUuid + "/assignments/" + assignmentUuid + "/submissions");
+    QNetworkReply* reply = nam_->get(req);
+    QPointer<ApiClient> self(this);
+    connect(reply, &QNetworkReply::finished, this, [self, reply]() {
+        reply->deleteLater();
+        if (!self) return;
+        int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        if (status != 200) {
+            self->handleNetworkError(reply, "/api/courses/.../submissions");
+            emit self->submissionsError("获取提交列表失败");
+            return;
+        }
+        QJsonArray arr = QJsonDocument::fromJson(reply->readAll()).array();
+        emit self->submissionListReset();
+        for (const QJsonValue& v : arr) {
+            QJsonObject s = v.toObject();
+            emit self->submissionListed(
+                s["uuid"].toString(),
+                s["student_uuid"].toString(),
+                s["student_name"].toString(),
+                s["student_no"].toString(),
+                s["content"].toString(),
+                s["file_name"].toString(),
+                s["submitted_at"].toString(),
+                s["score"].toDouble(),
+                s["feedback"].toString(),
+                s["status"].toString(),
+                s["created_at"].toString());
+        }
+        emit self->submissionsListDone();
+    });
+}
+
+void ApiClient::gradeSubmission(const QString& courseUuid, const QString& assignmentUuid,
+                                 const QString& submissionUuid, double score,
+                                 const QString& feedback) {
+    QJsonObject body;
+    body["score"] = score;
+    if (!feedback.isEmpty()) body["feedback"] = feedback;
+
+    patchJson("/api/courses/" + courseUuid + "/assignments/" + assignmentUuid
+              + "/submissions/" + submissionUuid, body,
+              [this, submissionUuid](int status, const QJsonObject& obj) {
+        if (status == 403) {
+            emit submissionGradeError("无权限评分（仅教师/管理员）");
+            return;
+        }
+        if (status != 200) {
+            emit submissionGradeError(obj.value("detail").toString("评分失败"));
+            return;
+        }
+        emit submissionGraded(submissionUuid);
     });
 }
 

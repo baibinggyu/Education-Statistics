@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:forui/forui.dart';
 import '../theme/app_theme.dart';
 import '../theme/responsive.dart';
 import '../services/auth_provider.dart';
@@ -75,35 +76,25 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final r = context.responsive;
+    final colors = context.appColors;
     final cardWidth = r.isCompact ? double.infinity : r.clamped(400, 340, 480);
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: isDark
-                ? const [Color(0xFF0B0D17), Color(0xFF1A1D2A), Color(0xFF0B0D17)]
-                : [AppLightColors.background, AppLightColors.surfaceLight, AppLightColors.background],
-          ),
-        ),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.symmetric(horizontal: r.hPadding * 2),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _buildBranding(context),
-                  SizedBox(height: r.clamped(48, 32, 64)),
-                  _buildLoginCard(context, cardWidth),
-                  SizedBox(height: r.clamped(32, 20, 40)),
-                  Text('Edu v1.0.0 · AI + 教育',
-                      style: AppTextStyles.scaled(AppTextStyles.small, r.scale)),
-                ],
-              ),
+    return Container(
+      color: colors.background,
+      child: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(horizontal: r.hPadding * 2),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildBranding(context),
+                SizedBox(height: r.clamped(48, 32, 64)),
+                _buildLoginCard(context, cardWidth),
+                SizedBox(height: r.clamped(32, 20, 40)),
+                Text('Edu v1.0.0 · AI + 教育',
+                    style: AppTextStyles.scaled(AppTextStyles.small, r.scale)),
+              ],
             ),
           ),
         ),
@@ -127,7 +118,8 @@ class _LoginPageState extends State<LoginPage> {
               end: Alignment.bottomRight,
             ),
           ),
-          child: Icon(Icons.school, size: logoSize * 0.55, color: Colors.white),
+          child: Icon(FIcons.graduationCap,
+              size: logoSize * 0.55, color: const Color(0xFFFFFFFF)),
         ),
         SizedBox(height: r.clamped(20, 14, 26)),
         ShaderMask(
@@ -139,7 +131,7 @@ class _LoginPageState extends State<LoginPage> {
             style: TextStyle(
                 fontSize: r.clamped(36, 30, 44),
                 fontWeight: FontWeight.bold,
-                color: Colors.white),
+                color: const Color(0xFFFFFFFF)),
           ),
         ),
         SizedBox(height: r.clamped(8, 4, 12)),
@@ -151,17 +143,15 @@ class _LoginPageState extends State<LoginPage> {
 
   Widget _buildLoginCard(BuildContext context, double cardWidth) {
     final r = context.responsive;
-    final theme = Theme.of(context);
-    final captionColor =
-        theme.textTheme.bodySmall?.color ?? AppColors.textSecondary;
+    final colors = context.appColors;
     return SizedBox(
       width: cardWidth,
       child: Container(
         padding: EdgeInsets.all(r.clamped(28, 20, 36)),
         decoration: BoxDecoration(
-          color: theme.cardTheme.color ?? theme.colorScheme.surface,
+          color: colors.surface,
           borderRadius: BorderRadius.circular(r.radius),
-          border: Border.all(color: theme.dividerColor),
+          border: Border.all(color: colors.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -180,34 +170,28 @@ class _LoginPageState extends State<LoginPage> {
                   border: Border.all(color: AppColors.danger.withAlpha(77)),
                 ),
                 child: Text(_error!,
-                    style: const TextStyle(color: AppColors.danger, fontSize: 12)),
+                    style: const TextStyle(
+                        color: AppColors.danger, fontSize: 12)),
               ),
             ],
             Text('用户名',
                 style: AppTextStyles.scaled(AppTextStyles.caption, r.scale)),
             SizedBox(height: r.clamped(6, 4, 8)),
-            TextField(
-              controller: _usernameCtrl,
+            FTextField(
+              control: FTextFieldControl.managed(controller: _usernameCtrl),
               enabled: !_loading,
-              decoration: InputDecoration(
-                hintText: '请输入用户名',
-                prefixIcon: Icon(Icons.person_outline, color: captionColor, size: 20),
-              ),
-              onSubmitted: _loading ? null : (_) => _doLogin(),
+              hint: '请输入用户名',
+              prefixBuilder: (context, style, _) =>
+                  Icon(FIcons.user, size: 20, color: colors.textSecondary),
             ),
             SizedBox(height: r.clamped(16, 12, 20)),
             Text('密码',
                 style: AppTextStyles.scaled(AppTextStyles.caption, r.scale)),
             SizedBox(height: r.clamped(6, 4, 8)),
-            TextField(
-              controller: _passwordCtrl,
-              obscureText: true,
+            FTextField.password(
+              control: FTextFieldControl.managed(controller: _passwordCtrl),
               enabled: !_loading,
-              decoration: InputDecoration(
-                hintText: '请输入密码',
-                prefixIcon: Icon(Icons.lock_outline, color: captionColor, size: 20),
-              ),
-              onSubmitted: _loading ? null : (_) => _doLogin(),
+              hint: '请输入密码',
             ),
             SizedBox(height: r.clamped(16, 12, 20)),
             Row(
@@ -218,8 +202,12 @@ class _LoginPageState extends State<LoginPage> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        _rememberMe ? Icons.check_box : Icons.check_box_outline_blank,
-                        color: _rememberMe ? AppColors.primary : captionColor,
+                        _rememberMe
+                            ? FIcons.squareCheck
+                            : FIcons.square,
+                        color: _rememberMe
+                            ? AppColors.primary
+                            : colors.textSecondary,
                         size: r.clamped(18, 16, 20),
                       ),
                       SizedBox(width: r.clamped(6, 4, 8)),
@@ -243,14 +231,11 @@ class _LoginPageState extends State<LoginPage> {
             SizedBox(
               width: double.infinity,
               height: r.clamped(48, 42, 54),
-              child: ElevatedButton(
-                onPressed: _loading ? null : _doLogin,
+              child: FButton(
+                onPress: _loading ? null : _doLogin,
+                variant: FButtonVariant.primary,
                 child: _loading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
+                    ? const FCircularProgress(size: FCircularProgressSizeVariant.sm)
                     : const Text('登  录'),
               ),
             ),

@@ -120,6 +120,17 @@ public slots:
     void uploadVideoFile(const QString& courseUuid, const QString& title,
                          const QString& filePath, bool addSubtitle = false);
 
+    // --- Assignments ---
+    void fetchAssignments(const QString& courseUuid);
+    void publishAssignment(const QString& courseUuid, const QString& title,
+                           const QString& description, const QString& dueDate,
+                           double totalPoints);
+    void deleteAssignment(const QString& courseUuid, const QString& assignmentUuid);
+    void fetchSubmissions(const QString& courseUuid, const QString& assignmentUuid);
+    void gradeSubmission(const QString& courseUuid, const QString& assignmentUuid,
+                         const QString& submissionUuid, double score,
+                         const QString& feedback);
+
     // --- Credential Persistence ---
     Q_INVOKABLE void setRememberMe(bool remember);
     Q_INVOKABLE bool hasSavedCredentials() const;
@@ -300,6 +311,34 @@ signals:
     // Batch Import
     void studentsImported(int total, int created, int skipped, const QStringList& errors);
     void studentsImportError(const QString& message);
+
+    // Assignments
+    void assignmentListReset();
+    void assignmentListed(const QString& uuid, const QString& title,
+                          const QString& description, const QString& dueDate,
+                          double totalPoints, bool hasAttachment,
+                          const QString& attachmentName, const QString& status,
+                          const QString& authorName, int submissionCount,
+                          const QString& createdAt);
+    void assignmentsListDone();
+    void assignmentsError(const QString& message);
+    void assignmentPublished(const QString& uuid, const QString& title);
+    void assignmentPublishError(const QString& message);
+    void assignmentDeleted(const QString& uuid);
+    void assignmentDeleteError(const QString& message);
+
+    // Submissions
+    void submissionListReset();
+    void submissionListed(const QString& uuid, const QString& studentUuid,
+                          const QString& studentName, const QString& studentNo,
+                          const QString& content, const QString& fileName,
+                          const QString& submittedAt, double score,
+                          const QString& feedback, const QString& status,
+                          const QString& createdAt);
+    void submissionsListDone();
+    void submissionsError(const QString& message);
+    void submissionGraded(const QString& uuid);
+    void submissionGradeError(const QString& message);
 
     // File Upload
     void videoUploadProgress(const QString& stage, int percent);

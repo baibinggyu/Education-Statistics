@@ -340,3 +340,107 @@ class PlayRecord(Base):
     # relationships
     user = relationship("User", back_populates="play_records")
     video = relationship("Video", back_populates="play_records")
+
+
+class Resource(Base):
+    __tablename__ = "resources"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    uuid = Column(
+        String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4())
+    )
+
+    course_id = Column(BigInteger, ForeignKey("courses.id"), nullable=False)
+    uploader_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+
+    title = Column(String(255), nullable=False)
+    description = Column(Text)
+
+    file_path = Column(String(255), nullable=False)
+    file_name = Column(String(255), nullable=False)
+    file_size = Column(BigInteger, nullable=False, default=0)
+    file_type = Column(String(64), nullable=False, default="other")
+
+    status = Column(
+        Enum("normal", "deleted"), nullable=False, default="normal"
+    )
+
+    created_at = Column(DateTime, server_default=func.now())
+
+    # relationships
+    course = relationship("Course", backref="resources")
+    uploader = relationship("User", backref="uploaded_resources")
+
+
+class Assignment(Base):
+    __tablename__ = "assignments"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    uuid = Column(
+        String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4())
+    )
+
+    course_id = Column(BigInteger, ForeignKey("courses.id"), nullable=False)
+    author_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+
+    title = Column(String(255), nullable=False)
+    description = Column(Text)
+
+    due_date = Column(DateTime, nullable=True)
+    total_points = Column(Float, nullable=True)
+
+    attachment_path = Column(String(255), nullable=True)
+    attachment_name = Column(String(255), nullable=True)
+
+    status = Column(
+        Enum("open", "closed"), nullable=False, default="open"
+    )
+
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    # relationships
+    course = relationship("Course", backref="assignments")
+    author = relationship("User", backref="assignments")
+    submissions = relationship("Submission", back_populates="assignment")
+
+
+class Submission(Base):
+    __tablename__ = "submissions"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    uuid = Column(
+        String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4())
+    )
+
+    assignment_id = Column(BigInteger, ForeignKey("assignments.id"), nullable=False)
+    student_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+
+    content = Column(Text, nullable=True)
+    file_path = Column(String(255), nullable=True)
+    file_name = Column(String(255), nullable=True)
+
+    submitted_at = Column(DateTime, nullable=True)
+    score = Column(Float, nullable=True)
+    feedback = Column(Text, nullable=True)
+
+    status = Column(
+        Enum("draft", "submitted", "late", "graded"),
+        nullable=False,
+        default="draft",
+    )
+
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("assignment_id", "student_id", name="uk_assignment_student"),
+    )
+
+    # relationships
+    assignment = relationship("Assignment", back_populates="submissions")
+    student = relationship("User", backref="submissions")

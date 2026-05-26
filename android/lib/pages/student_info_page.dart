@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:forui/forui.dart';
 import '../theme/app_theme.dart';
 import '../theme/responsive.dart';
 import '../services/api_client.dart';
@@ -45,25 +46,41 @@ class _StudentInfoPageState extends State<StudentInfoPage> {
   @override
   Widget build(BuildContext context) {
     final r = context.responsive;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_summary?['course_name'] as String? ?? '成绩汇总'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadData,
+    return SafeArea(
+      child: Column(
+        children: [
+          FHeader.nested(
+            title: Text(
+                _summary?['course_name'] as String? ?? '成绩汇总'),
+            prefixes: [
+              FButton.icon(
+                onPress: () => Navigator.pop(context),
+                variant: FButtonVariant.ghost,
+                child: const Icon(FIcons.arrowLeft),
+              ),
+            ],
+            suffixes: [
+              FButton.icon(
+                onPress: _loadData,
+                variant: FButtonVariant.ghost,
+                child: const Icon(FIcons.refreshCw),
+              ),
+            ],
           ),
+          if (_loading)
+            const Expanded(child: Center(child: FCircularProgress()))
+          else
+            Expanded(
+              child: Column(
+                children: [
+                  SizedBox(height: r.clamped(8, 4, 12)),
+                  _buildTableHeader(context),
+                  Expanded(child: _buildStudentList(context)),
+                ],
+              ),
+            ),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                SizedBox(height: r.clamped(8, 4, 12)),
-                _buildTableHeader(context),
-                Expanded(child: _buildStudentList(context)),
-              ],
-            ),
     );
   }
 
@@ -76,18 +93,18 @@ class _StudentInfoPageState extends State<StudentInfoPage> {
         child: Text('暂无成绩数据', style: AppTextStyles.caption),
       );
     }
-    // Dynamic columns based on unit count
+    final colors = context.appColors;
     return Container(
       padding: EdgeInsets.symmetric(
           horizontal: r.hPadding, vertical: r.clamped(10, 6, 14)),
-      color: Theme.of(context).inputDecorationTheme.fillColor ??
-          AppColors.surfaceLight,
+      color: colors.surfaceLight,
       child: Row(
         children: [
-          const SizedBox(width: 60, child: Text('学号', style: AppTextStyles.caption)),
-          const SizedBox(width: 60, child: Text('姓名', style: AppTextStyles.caption)),
+          const SizedBox(
+              width: 60, child: Text('学号', style: AppTextStyles.caption)),
+          const SizedBox(
+              width: 60, child: Text('姓名', style: AppTextStyles.caption)),
           ...units.map((name) {
-            // Use first char or abbreviation
             final short = name.length > 3 ? name.substring(0, 3) : name;
             return SizedBox(
               width: 50,
@@ -95,7 +112,8 @@ class _StudentInfoPageState extends State<StudentInfoPage> {
             );
           }),
           const Expanded(
-              child: Text('总分', style: AppTextStyles.caption, textAlign: TextAlign.end)),
+              child: Text('总分',
+                  style: AppTextStyles.caption, textAlign: TextAlign.end)),
         ],
       ),
     );
@@ -113,6 +131,7 @@ class _StudentInfoPageState extends State<StudentInfoPage> {
         ),
       );
     }
+    final colors = context.appColors;
     return ListView.builder(
       itemCount: students.length,
       itemBuilder: (context, index) {
@@ -124,30 +143,49 @@ class _StudentInfoPageState extends State<StudentInfoPage> {
         final total = s['weighted_total'];
         final totalStr = total != null ? total.toStringAsFixed(1) : '-';
 
-        return Container(
-          padding: EdgeInsets.symmetric(
-              horizontal: r.hPadding, vertical: r.clamped(11, 8, 14)),
-          color: isEven ? Colors.transparent : AppColors.cardBg,
-          child: Row(
-            children: [
-              SizedBox(width: 60, child: Text(no, style: AppTextStyles.body)),
-              SizedBox(width: 60, child: Text(name, style: AppTextStyles.bodyBold)),
-              ..._unitNames.asMap().entries.map((entry) {
-                final i = entry.key;
-                final score = i < scores.length ? scores[i] : null;
-                final scoreStr =
-                    score != null ? score.toStringAsFixed(0) : '-';
-                return SizedBox(
-                  width: 50,
-                  child: Text(scoreStr, style: AppTextStyles.body),
-                );
-              }),
-              Expanded(
-                child: Text(totalStr,
-                    style: AppTextStyles.bodyBold,
-                    textAlign: TextAlign.end),
-              ),
-            ],
+        final studentUuid = s['student_uuid'] as String? ?? '';
+
+        return GestureDetector(
+          onTap: () {
+            if (studentUuid.isNotEmpty && widget.courseUuid != null) {
+              Navigator.pushNamed(
+                context,
+                '/student-analysis',
+                arguments: {
+                  'courseUuid': widget.courseUuid!,
+                  'studentUuid': studentUuid,
+                  'studentName': name.isNotEmpty ? name : no,
+                },
+              );
+            }
+          },
+          child: Container(
+            padding: EdgeInsets.symmetric(
+                horizontal: r.hPadding, vertical: r.clamped(11, 8, 14)),
+            color: isEven ? const Color(0x00000000) : colors.cardBg,
+            child: Row(
+              children: [
+                SizedBox(width: 60, child: Text(no, style: AppTextStyles.body)),
+                SizedBox(
+                    width: 60,
+                    child: Text(name, style: AppTextStyles.bodyBold)),
+                ..._unitNames.asMap().entries.map((entry) {
+                  final i = entry.key;
+                  final score = i < scores.length ? scores[i] : null;
+                  final scoreStr =
+                      score != null ? score.toStringAsFixed(0) : '-';
+                  return SizedBox(
+                    width: 50,
+                    child: Text(scoreStr, style: AppTextStyles.body),
+                  );
+                }),
+                Expanded(
+                  child: Text(totalStr,
+                      style: AppTextStyles.bodyBold,
+                      textAlign: TextAlign.end),
+                ),
+              ],
+            ),
           ),
         );
       },

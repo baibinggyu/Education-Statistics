@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:forui/forui.dart';
 import '../theme/app_theme.dart';
 import '../theme/responsive.dart';
 import '../widgets/common_widgets.dart';
@@ -14,6 +15,8 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   List<dynamic> _courses = [];
+  Map<String, double> _courseProgress = {};
+  Map<String, int> _videoCounts = {};
   bool _loading = true;
 
   @override
@@ -25,9 +28,33 @@ class _HomePageState extends State<HomePage> {
   Future<void> _loadData() async {
     try {
       final courses = await widget.auth.api.listCourses();
+      final progress = <String, double>{};
+      final videoCounts = <String, int>{};
+      for (final c in courses) {
+        final uuid = c['uuid'] as String;
+        try {
+          final records = await widget.auth.api
+              .getMyCoursePlayRecords(uuid);
+          final total = records.length;
+          final completed =
+              records.where((r) => (r['completed'] as bool? ?? false)).length;
+          progress[uuid] =
+              total > 0 ? completed / total : 0.0;
+        } catch (_) {
+          progress[uuid] = 0.0;
+        }
+        try {
+          final videos = await widget.auth.api.listVideos(uuid);
+          videoCounts[uuid] = videos.length;
+        } catch (_) {
+          videoCounts[uuid] = 0;
+        }
+      }
       if (mounted) {
         setState(() {
           _courses = courses;
+          _courseProgress = progress;
+          _videoCounts = videoCounts;
           _loading = false;
         });
       }
@@ -46,8 +73,8 @@ class _HomePageState extends State<HomePage> {
 
   int get _totalVideos {
     int count = 0;
-    for (final c in _courses) {
-      count += (c['video_count'] as int? ?? 0);
+    for (final n in _videoCounts.values) {
+      count += n;
     }
     return count;
   }
@@ -57,36 +84,32 @@ class _HomePageState extends State<HomePage> {
     final r = context.responsive;
 
     if (_loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Center(child: FCircularProgress());
     }
 
-    return Scaffold(
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _loadData,
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.symmetric(vertical: r.vPadding),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeader(context),
-                SizedBox(height: r.clamped(16, 10, 24)),
-                _buildBanner(context),
+    return SafeArea(
+      child: RefreshIndicator(
+        onRefresh: _loadData,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.symmetric(vertical: r.vPadding),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(context),
+              SizedBox(height: r.clamped(16, 10, 24)),
+              _buildBanner(context),
+              SizedBox(height: r.clamped(20, 12, 28)),
+              _buildQuickActions(context),
+              SizedBox(height: r.clamped(20, 12, 28)),
+              _buildStats(context),
+              if (_courses.isNotEmpty) ...[
                 SizedBox(height: r.clamped(20, 12, 28)),
-                _buildQuickActions(context),
-                SizedBox(height: r.clamped(20, 12, 28)),
-                _buildStats(context),
-                if (_courses.isNotEmpty) ...[
-                  SizedBox(height: r.clamped(20, 12, 28)),
-                  SectionHeader(title: '最近课程', action: '查看全部'),
-                  SizedBox(height: r.clamped(8, 4, 12)),
-                  _buildRecentCourses(context),
-                ],
+                SectionHeader(title: '最近课程', action: '查看全部'),
+                SizedBox(height: r.clamped(8, 4, 12)),
+                _buildRecentCourses(context),
               ],
-            ),
+            ],
           ),
         ),
       ),
@@ -101,10 +124,15 @@ class _HomePageState extends State<HomePage> {
       padding: EdgeInsets.symmetric(horizontal: r.hPadding),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: avatarSize,
-            backgroundColor: AppColors.primary,
-            child: Icon(Icons.person, color: Colors.white, size: avatarSize * 1.1),
+          FAvatar.raw(
+            size: avatarSize * 2,
+            child: Container(
+              color: AppColors.primary,
+              alignment: Alignment.center,
+              child: Icon(FIcons.user,
+                  color: const Color(0xFFFFFFFF),
+                  size: avatarSize * 1.1),
+            ),
           ),
           SizedBox(width: r.clamped(12, 8, 16)),
           Column(
@@ -118,9 +146,11 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
           const Spacer(),
-          IconButton(
-            icon: Icon(Icons.refresh, size: r.clamped(22, 18, 26)),
-            onPressed: _loadData,
+          FButton.icon(
+            onPress: _loadData,
+            variant: FButtonVariant.ghost,
+            child: Icon(FIcons.refreshCw,
+                size: r.clamped(22, 18, 26)),
           ),
         ],
       ),
@@ -139,8 +169,9 @@ class _HomePageState extends State<HomePage> {
         builder: (context, constraints) {
           final minHeight = r.clamped(150, 130, 200);
           final aspectHeight = constraints.maxWidth * 0.25;
-          final bannerHeight =
-              aspectHeight > minHeight ? aspectHeight : minHeight.toDouble();
+          final bannerHeight = aspectHeight > minHeight
+              ? aspectHeight
+              : minHeight.toDouble();
 
           return Container(
             height: bannerHeight,
@@ -162,8 +193,8 @@ class _HomePageState extends State<HomePage> {
                     height: r.clamped(120, 80, 160),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border:
-                          Border.all(color: Colors.white.withAlpha(26), width: 2),
+                      border: Border.all(
+                          color: const Color(0x42FFFFFF), width: 2),
                     ),
                   ),
                 ),
@@ -177,24 +208,12 @@ class _HomePageState extends State<HomePage> {
                           style: TextStyle(
                               fontSize: titleSize,
                               fontWeight: FontWeight.bold,
-                              color: Colors.white)),
+                              color: const Color(0xFFFFFFFF))),
                       SizedBox(height: r.clamped(8, 4, 10)),
                       Text('让教育更智能，让学习更高效',
-                          style: TextStyle(fontSize: bodySize, color: Colors.white70)),
-                      SizedBox(height: r.clamped(14, 6, 20)),
-                      Row(
-                        children: [
-                          Icon(Icons.play_circle,
-                              color: Colors.white,
-                              size: r.clamped(16, 14, 20)),
-                          SizedBox(width: r.clamped(4, 2, 6)),
-                          Text('继续学习',
-                              style: TextStyle(
-                                  fontSize: bodySize,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white)),
-                        ],
-                      ),
+                          style: TextStyle(
+                              fontSize: bodySize,
+                              color: const Color(0xB3FFFFFF))),
                     ],
                   ),
                 ),
@@ -210,73 +229,30 @@ class _HomePageState extends State<HomePage> {
     final r = context.responsive;
     final btnSize = r.iconButtonSize;
     final iconSize = btnSize * 0.46;
-    final actions = [
-      {
-        'icon': Icons.how_to_reg,
-        'label': '点名',
-        'route': '/roll-call',
-      },
-      {
-        'icon': Icons.timer,
-        'label': '倒计时',
-        'route': '/countdown',
-      },
-      {
-        'icon': Icons.play_circle,
-        'label': '视频',
-        'route': '/video',
-      },
-      {
-        'icon': Icons.campaign,
-        'label': '公告',
-        'route': '/announcements',
-      },
-    ];
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: r.hPadding),
-      child: r.isCompact
-          ? Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: actions
-                  .map((a) => _buildActionButton(
-                      context, a, btnSize, iconSize, r))
-                  .toList(),
-            )
-          : Wrap(
-              spacing: r.clamped(24, 16, 40),
-              runSpacing: r.clamped(12, 8, 18),
-              alignment: WrapAlignment.center,
-              children: actions
-                  .map((a) => _buildActionButton(
-                      context, a, btnSize, iconSize, r))
-                  .toList(),
-            ),
+      child: _buildActionButton(
+          context,
+          {'icon': FIcons.megaphone, 'label': '公告', 'route': '/announcements'},
+          btnSize, iconSize, r),
     );
   }
 
   Widget _buildActionButton(BuildContext context, Map<String, dynamic> a,
       double btnSize, double iconSize, Responsive r) {
+    final colors = context.appColors;
     return GestureDetector(
-      onTap: () {
-        final route = a['route'] as String;
-        if (_courses.isNotEmpty) {
-          final firstUuid = _courses.first['uuid'] as String;
-          Navigator.pushNamed(context, route, arguments: firstUuid);
-        } else {
-          Navigator.pushNamed(context, route);
-        }
-      },
+      onTap: () => _handleActionTap(context, a['route'] as String),
       child: Column(
         children: [
           Container(
             width: btnSize,
             height: btnSize,
             decoration: BoxDecoration(
-              color: Theme.of(context).cardTheme.color ??
-                  Theme.of(context).colorScheme.surface,
+              color: colors.surface,
               borderRadius: BorderRadius.circular(r.clamped(14, 10, 18)),
-              border: Border.all(color: Theme.of(context).dividerColor),
+              border: Border.all(color: colors.border),
             ),
             child: Icon(a['icon'] as IconData,
                 color: AppColors.primary, size: iconSize),
@@ -289,6 +265,15 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _handleActionTap(BuildContext context, String route) async {
+    final firstCourseUuid = _courses.isEmpty ? null : _courses.first['uuid'] as String;
+    if (firstCourseUuid != null) {
+      Navigator.pushNamed(context, route, arguments: firstCourseUuid);
+    } else {
+      Navigator.pushNamed(context, route);
+    }
+  }
+
   Widget _buildStats(BuildContext context) {
     final r = context.responsive;
     return Padding(
@@ -299,19 +284,19 @@ class _HomePageState extends State<HomePage> {
               child: StatCard(
                   title: '课程数',
                   value: '${_courses.length}',
-                  icon: Icons.book)),
+                  icon: FIcons.book)),
           SizedBox(width: r.clamped(12, 8, 16)),
           Expanded(
               child: StatCard(
                   title: '学生数',
                   value: '$_totalStudents',
-                  icon: Icons.people)),
+                  icon: FIcons.users)),
           SizedBox(width: r.clamped(12, 8, 16)),
           Expanded(
               child: StatCard(
                   title: '视频数',
                   value: '$_totalVideos',
-                  icon: Icons.videocam)),
+                  icon: FIcons.video)),
         ],
       ),
     );
@@ -342,17 +327,13 @@ class _HomePageState extends State<HomePage> {
             runSpacing: spacing,
             children: displayCourses.map((c) {
               final name = c['name'] as String? ?? '';
-              final teacher =
-                  c['teacher']?['username'] as String? ?? '';
-              final progress =
-                  (c['video_count'] as int? ?? 0) > 0 ? 0.5 : 0.0;
+              final uuid = c['uuid'] as String;
+              final progress = _courseProgress[uuid] ?? 0.0;
 
               return SizedBox(
                 width: cardWidth,
                 child: CourseCard(
                   title: name,
-                  teacher: teacher,
-                  category: c['my_role'] as String? ?? '',
                   progress: progress,
                   coverColor: AppColors.primary,
                   onTap: () async {

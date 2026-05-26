@@ -206,6 +206,30 @@ void AgentBackend::setAgentMode(bool enabled) {
 // ---------------------------------------------------------------------------
 void AgentBackend::setApiClient(ApiClient* client) {
     apiClient_ = client;
+    // 优先通过服务器代理调用 AI（API key 只保存在服务器上）
+    tryInitServerProxy();
+}
+
+void AgentBackend::tryInitServerProxy() {
+    if (!apiClient_ || !apiClient_->isAuthenticated()) return;
+
+    QString jwt = apiClient_->token();
+    QString server = apiClient_->serverUrl();
+    if (server.endsWith('/')) server.chop(1);
+
+    // ai-sdk-cpp 的 Anthropic client 会向 {base}/v1/messages 发请求
+    QString proxyUrl = server + "/api/ai/anthropic-proxy";
+
+    // JWT 作为 API key 通过 x-api-key 头部发送，服务端代理端点会验证
+    client_ = ai::anthropic::create_client(jwt.toStdString(), proxyUrl.toStdString());
+
+    // 模型名优先用环境变量覆盖，默认 deepseek-v4-pro
+    model_name_ = envStr("ANTHROPIC_MODEL");
+    if (model_name_.isEmpty()) model_name_ = envStr("LLM_MODEL");
+    if (model_name_.isEmpty()) model_name_ = "deepseek-v4-pro";
+
+    qDebug() << "[AgentBackend] Provider: Server Proxy | Model:" << model_name_
+             << "| Proxy:" << proxyUrl;
 }
 
 // ---------------------------------------------------------------------------

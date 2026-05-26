@@ -1,8 +1,11 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
-import '../theme/app_theme.dart';
-import '../theme/responsive.dart';
+import 'dart:io';
+
+import 'package:flutter/widgets.dart';
+import 'package:forui/forui.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../services/api_client.dart';
 
@@ -17,14 +20,12 @@ class VideoPlayerPage extends StatefulWidget {
 class _VideoPlayerPageState extends State<VideoPlayerPage> {
   final ApiClient _api = ApiClient();
   Map<String, dynamic>? _video;
-  VideoPlayerController? _controller;
+  Player? _player;
+  VideoController? _videoController;
   bool _loading = true;
-  bool _videoReady = false;
   String? _error;
-  bool _showControls = true;
-  Timer? _hideTimer;
-  Duration _position = Duration.zero;
-  bool _wasPlaying = false;
+  bool _isPlaying = false;
+  StreamSubscription<bool>? _playSub;
 
   String get _videoUrl {
     final token = _api.token ?? '';
@@ -42,299 +43,229 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       if (mounted) setState(() => _loading = false);
       return;
     }
+    // Check local download first
+    final dir = await getApplicationDocumentsDirectory();
+    final localPath = '${dir.path}/downloads/${widget.videoUuid}.mp4';
+    if (await File(localPath).exists()) {
+      await _initPlayer(localPath: localPath);
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
     try {
       final v = await _api.getVideoDetail(widget.videoUuid!);
+      if (!mounted) return;
+      setState(() => _video = v);
+      await _initPlayer();
+      if (mounted) setState(() => _loading = false);
+    } catch (e) {
       if (mounted) {
         setState(() {
-          _video = v;
           _loading = false;
+          _error = '加载视频信息失败';
         });
-        _initPlayer();
       }
-    } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = '加载视频信息失败'; });
     }
   }
 
-  Future<void> _initPlayer() async {
+  Future<void> _initPlayer({String? localPath}) async {
     try {
-      final uri = Uri.parse(_videoUrl);
-      _controller = VideoPlayerController.networkUrl(uri);
-      await _controller!.initialize();
-      _controller!.addListener(_onPlayerUpdate);
-      if (mounted) setState(() => _videoReady = true);
+      _player = Player();
+      _videoController = VideoController(_player!);
+      _playSub = _player!.stream.playing.listen((playing) {
+        if (mounted) setState(() => _isPlaying = playing);
+      });
+
+      if (localPath != null) {
+        await _player!.open(Media('file://$localPath'));
+      } else {
+        await _player!.open(Media(
+          _videoUrl,
+          httpHeaders: _api.token != null
+              ? {'Authorization': 'Bearer ${_api.token}'}
+              : null,
+        ));
+      }
     } catch (e) {
       if (mounted) setState(() => _error = '视频加载失败: $e');
     }
   }
 
-  void _onPlayerUpdate() {
-    if (_controller == null || !mounted) return;
-    final pos = _controller!.value.position;
-    if (pos != _position) {
-      setState(() => _position = pos);
-    }
-  }
-
   void _togglePlay() {
-    if (_controller == null) return;
-    if (_controller!.value.isPlaying) {
-      _controller!.pause();
+    if (_player == null) return;
+    if (_isPlaying) {
+      _player!.pause();
     } else {
-      _controller!.play();
+      _player!.play();
     }
-    setState(() {});
-  }
-
-  void _seekRelative(int seconds) {
-    if (_controller == null) return;
-    var newPos = _controller!.value.position + Duration(seconds: seconds);
-    final max = _controller!.value.duration;
-    if (newPos < Duration.zero) newPos = Duration.zero;
-    if (newPos > max) newPos = max;
-    _controller!.seekTo(newPos);
   }
 
   void _toggleFullscreen() {
-    _wasPlaying = _controller?.value.isPlaying ?? false;
-    if (_controller != null && _wasPlaying) _controller!.pause();
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => _FullScreenPlayer(
-          controller: _controller!,
+    if (_player == null) return;
+    final wasPlaying = _isPlaying;
+    if (wasPlaying) _player!.pause();
+
+    _videoController = null;
+    Navigator.of(context)
+        .push(
+      PageRouteBuilder(
+        pageBuilder: (context, _, _) => _FullScreenPlayer(
+          player: _player!,
           title: _video?['title'] as String? ?? '',
-          wasPlaying: _wasPlaying,
+          wasPlaying: wasPlaying,
         ),
       ),
-    ).then((_) {
-      if (_wasPlaying) _controller?.play();
-    });
-  }
-
-  void _onTapVideo() {
-    setState(() {
-      _showControls = !_showControls;
-    });
-    if (_showControls) {
-      _resetHideTimer();
-    }
-  }
-
-  void _resetHideTimer() {
-    _hideTimer?.cancel();
-    _hideTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted && _controller?.value.isPlaying == true) {
-        setState(() => _showControls = false);
+    )
+        .then((_) {
+      if (_player != null) {
+        _videoController = VideoController(_player!);
+        if (mounted) setState(() {});
       }
+      if (wasPlaying) _player?.play();
     });
-  }
-
-  String _fmt(Duration d) {
-    final m = d.inMinutes.toString().padLeft(2, '0');
-    final s = (d.inSeconds % 60).toString().padLeft(2, '0');
-    return '$m:$s';
   }
 
   @override
   void dispose() {
-    _hideTimer?.cancel();
-    _controller?.removeListener(_onPlayerUpdate);
-    _controller?.dispose();
+    _playSub?.cancel();
+    _player?.dispose();
     super.dispose();
+  }
+
+  Widget _buildHeader() {
+    final title = _video?['title'] as String? ?? '视频播放';
+    final padTop = MediaQuery.of(context).padding.top;
+    return Container(
+      padding: EdgeInsets.only(top: padTop),
+      color: const Color(0xFF000000),
+      child: SizedBox(
+        height: 54,
+        child: Row(
+          children: [
+            GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: const SizedBox(
+                width: 48,
+                height: 48,
+                child: Icon(FIcons.arrowLeft,
+                    color: Color(0xFFFFFFFF), size: 24),
+              ),
+            ),
+            Expanded(
+              child: Text(title,
+                  style: const TextStyle(
+                      color: Color(0xFFFFFFFF), fontSize: 17),
+                  overflow: TextOverflow.ellipsis),
+            ),
+            GestureDetector(
+              onTap: _toggleFullscreen,
+              child: const SizedBox(
+                width: 48,
+                height: 48,
+                child: Icon(FIcons.maximize,
+                    color: Color(0xFFFFFFFF), size: 22),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final title = _video?['title'] as String? ?? '视频播放';
-
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: Text(title),
-        backgroundColor: Colors.black,
-        iconTheme: const IconThemeData(color: Colors.white),
-        titleTextStyle: const TextStyle(color: Colors.white, fontSize: 18),
+    return ColoredBox(
+      color: const Color(0xFF000000),
+      child: Column(
+        children: [
+          _buildHeader(),
+          Expanded(
+            child: _loading
+                ? const Center(child: FCircularProgress())
+                : widget.videoUuid == null
+                    ? const Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(FIcons.video,
+                                color: Color(0x61FFFFFF), size: 64),
+                            SizedBox(height: 16),
+                            Text('请从课程页面选择视频播放',
+                                style: TextStyle(
+                                    color: Color(0x8AFFFFFF),
+                                    fontSize: 14)),
+                          ],
+                        ),
+                      )
+                    : _error != null
+                        ? Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(_error!,
+                                    style: const TextStyle(
+                                        color: Color(0xB3FFFFFF))),
+                                const SizedBox(height: 16),
+                                GestureDetector(
+                                  onTap: _loadData,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 24, vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFFFFFF),
+                                      borderRadius:
+                                          BorderRadius.circular(8),
+                                    ),
+                                    child: const Text('重试',
+                                        style: TextStyle(
+                                            color: Color(0xFF000000))),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : _buildPlayer(context),
+          ),
+        ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(_error!, style: const TextStyle(color: Colors.white70)),
-                      const SizedBox(height: 16),
-                      ElevatedButton(onPressed: _loadData, child: const Text('重试')),
-                    ],
-                  ),
-                )
-              : _buildPlayer(context),
     );
   }
 
   Widget _buildPlayer(BuildContext context) {
-    final r = context.responsive;
-    if (!_videoReady || _controller == null) {
-      return const Center(child: CircularProgressIndicator());
+    if (_player == null || _videoController == null) {
+      return const SizedBox.shrink();
     }
 
-    final total = _controller!.value.duration;
-    final progress = _position.inMilliseconds / (total.inMilliseconds > 0 ? total.inMilliseconds : 1);
-    final isPlaying = _controller!.value.isPlaying;
-
-    return Column(
-      children: [
-        // Video area
-        Expanded(
-          child: GestureDetector(
-            onTap: _onTapVideo,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                VideoPlayer(_controller!),
-                if (_showControls && !isPlaying)
-                  Container(
-                    width: 64, height: 64,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withAlpha(77),
-                    ),
-                    child: const Icon(Icons.play_arrow, color: Colors.white, size: 40),
-                  ),
-                // Top info bar
-                if (_showControls)
-                  Positioned(
-                    top: 0, left: 0, right: 0,
-                    child: Container(
-                      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Colors.black54, Colors.transparent],
-                        ),
-                      ),
-                      child: SafeArea(
-                        child: Padding(
-                          padding: EdgeInsets.all(r.clamped(12, 8, 16)),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  _video?['title'] as String? ?? '',
-                                  style: const TextStyle(color: Colors.white, fontSize: 14),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.fullscreen, color: Colors.white, size: 22),
-                                onPressed: _toggleFullscreen,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
+    return GestureDetector(
+      onTap: _togglePlay,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Video(controller: _videoController!),
+          if (!_isPlaying)
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xC4FFFFFF),
+              ),
+              child: const Icon(FIcons.play,
+                  color: Color(0xFFFFFFFF), size: 40),
             ),
-          ),
-        ),
-        // Controls
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          height: _showControls ? null : 0,
-          child: _showControls
-              ? Container(
-                  padding: EdgeInsets.symmetric(horizontal: r.clamped(12, 8, 16), vertical: r.clamped(8, 4, 12)),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Colors.transparent, Colors.black87],
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      // Progress slider
-                      Row(
-                        children: [
-                          Text(_fmt(_position), style: AppTextStyles.small),
-                          Expanded(
-                            child: SliderTheme(
-                              data: SliderThemeData(
-                                trackHeight: 3,
-                                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                                activeTrackColor: AppColors.primary,
-                                inactiveTrackColor: Colors.white24,
-                                thumbColor: AppColors.primary,
-                              ),
-                              child: Slider(
-                                value: (progress * 1000).clamp(0, 1000).toDouble(),
-                                max: 1000,
-                                onChanged: (v) {
-                                  final ms = (total.inMilliseconds * v / 1000).round();
-                                  _controller!.seekTo(Duration(milliseconds: ms));
-                                },
-                              ),
-                            ),
-                          ),
-                          Text(_fmt(total), style: AppTextStyles.small),
-                        ],
-                      ),
-                      // Play controls
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.replay_10, color: Colors.white),
-                            onPressed: () => _seekRelative(-10),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.skip_previous, color: Colors.white),
-                            onPressed: () {},
-                          ),
-                          Container(
-                            width: 48, height: 48,
-                            decoration: BoxDecoration(
-                              color: AppColors.primary,
-                              borderRadius: BorderRadius.circular(24),
-                            ),
-                            child: IconButton(
-                              icon: Icon(
-                                isPlaying ? Icons.pause : Icons.play_arrow,
-                                color: Colors.white,
-                              ),
-                              onPressed: _togglePlay,
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.skip_next, color: Colors.white),
-                            onPressed: () {},
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.forward_10, color: Colors.white),
-                            onPressed: () => _seekRelative(10),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                )
-              : const SizedBox.shrink(),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
 class _FullScreenPlayer extends StatefulWidget {
-  final VideoPlayerController controller;
+  final Player player;
   final String title;
   final bool wasPlaying;
 
   const _FullScreenPlayer({
-    required this.controller,
+    required this.player,
     required this.title,
     required this.wasPlaying,
   });
@@ -344,194 +275,95 @@ class _FullScreenPlayer extends StatefulWidget {
 }
 
 class _FullScreenPlayerState extends State<_FullScreenPlayer> {
-  late VideoPlayerController _controller;
-  bool _showControls = true;
-  Timer? _hideTimer;
-  Duration _pos = Duration.zero;
+  late VideoController _controller;
+  bool _playing = false;
+  StreamSubscription<bool>? _playSub;
 
   @override
   void initState() {
     super.initState();
-    _controller = widget.controller;
-    _controller.addListener(_onUpdate);
-    if (widget.wasPlaying) _controller.play();
-    _resetTimer();
-  }
-
-  void _onUpdate() {
-    if (!mounted) return;
-    final pos = _controller.value.position;
-    if (pos != _pos) setState(() => _pos = pos);
-  }
-
-  void _resetTimer() {
-    _hideTimer?.cancel();
-    _hideTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted && _controller.value.isPlaying) setState(() => _showControls = false);
+    _controller = VideoController(widget.player);
+    _playSub = widget.player.stream.playing.listen((p) {
+      if (mounted) setState(() => _playing = p);
     });
+    if (widget.wasPlaying) widget.player.play();
   }
 
   void _togglePlay() {
-    if (_controller.value.isPlaying) {
-      _controller.pause();
+    if (_playing) {
+      widget.player.pause();
     } else {
-      _controller.play();
+      widget.player.play();
     }
-    setState(() {});
-  }
-
-  void _seekRelative(int seconds) {
-    var np = _controller.value.position + Duration(seconds: seconds);
-    if (np < Duration.zero) np = Duration.zero;
-    if (np > _controller.value.duration) np = _controller.value.duration;
-    _controller.seekTo(np);
   }
 
   void _exitFullscreen() {
-    _controller.removeListener(_onUpdate);
+    _playSub?.cancel();
     Navigator.of(context).pop();
-  }
-
-  String _fmt(Duration d) {
-    final m = d.inMinutes.toString().padLeft(2, '0');
-    final s = (d.inSeconds % 60).toString().padLeft(2, '0');
-    return '$m:$s';
   }
 
   @override
   void dispose() {
-    _hideTimer?.cancel();
+    _playSub?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final isPlaying = _controller.value.isPlaying;
-    final total = _controller.value.duration;
-    final progress = total.inMilliseconds > 0
-        ? _pos.inMilliseconds / total.inMilliseconds
-        : 0.0;
-
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: GestureDetector(
-        onTap: () {
-          setState(() => _showControls = !_showControls);
-          if (_showControls) _resetTimer();
-        },
+    return Container(
+      color: const Color(0xFF000000),
+      child: GestureDetector(
+        onTap: _togglePlay,
         child: Stack(
+          alignment: Alignment.center,
           children: [
-            Center(child: VideoPlayer(_controller)),
-            // Controls overlay
-            if (_showControls)
-              Column(
-                children: [
-                  // Top bar
-                  Container(
-                    padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Colors.black54, Colors.transparent],
-                      ),
-                    ),
-                    child: SafeArea(
-                      child: Row(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.arrow_back, color: Colors.white),
-                            onPressed: _exitFullscreen,
-                          ),
-                          Expanded(
-                            child: Text(widget.title,
-                                style: const TextStyle(color: Colors.white, fontSize: 15),
-                                overflow: TextOverflow.ellipsis),
-                          ),
-                        ],
-                      ),
-                    ),
+            Video(controller: _controller),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                padding:
+                    EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0x8A000000), Color(0x00000000)],
                   ),
-                  const Spacer(),
-                  // Bottom controls
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Colors.transparent, Colors.black87],
+                ),
+                child: Row(
+                  children: [
+                    GestureDetector(
+                      onTap: _exitFullscreen,
+                      child: const SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: Icon(FIcons.arrowLeft,
+                            color: Color(0xFFFFFFFF), size: 24),
                       ),
                     ),
-                    child: SafeArea(
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Text(_fmt(_pos), style: AppTextStyles.small),
-                              Expanded(
-                                child: SliderTheme(
-                                  data: SliderThemeData(
-                                    trackHeight: 3,
-                                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-                                    activeTrackColor: AppColors.primary,
-                                    inactiveTrackColor: Colors.white24,
-                                    thumbColor: AppColors.primary,
-                                  ),
-                                  child: Slider(
-                                    value: (progress * 1000).clamp(0, 1000).toDouble(),
-                                    max: 1000,
-                                    onChanged: (v) {
-                                      final ms = (total.inMilliseconds * v / 1000).round();
-                                      _controller.seekTo(Duration(milliseconds: ms));
-                                    },
-                                  ),
-                                ),
-                              ),
-                              Text(_fmt(total), style: AppTextStyles.small),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.replay_10, color: Colors.white, size: 30),
-                                onPressed: () => _seekRelative(-10),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.skip_previous, color: Colors.white, size: 30),
-                                onPressed: () {},
-                              ),
-                              Container(
-                                width: 56, height: 56,
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary,
-                                  borderRadius: BorderRadius.circular(28),
-                                ),
-                                child: IconButton(
-                                  icon: Icon(
-                                    isPlaying ? Icons.pause : Icons.play_arrow,
-                                    color: Colors.white, size: 32,
-                                  ),
-                                  onPressed: _togglePlay,
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.skip_next, color: Colors.white, size: 30),
-                                onPressed: () {},
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.forward_10, color: Colors.white, size: 30),
-                                onPressed: () => _seekRelative(10),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+                    Expanded(
+                      child: Text(widget.title,
+                          style: const TextStyle(
+                              color: Color(0xFFFFFFFF), fontSize: 15),
+                          overflow: TextOverflow.ellipsis),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 16),
+                  ],
+                ),
+              ),
+            ),
+            if (!_playing)
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xC4FFFFFF),
+                ),
+                child: const Icon(FIcons.play,
+                    color: Color(0xFFFFFFFF), size: 40),
               ),
           ],
         ),

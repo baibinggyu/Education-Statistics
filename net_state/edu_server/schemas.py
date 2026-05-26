@@ -44,6 +44,14 @@ class AIChatResponse(BaseModel):
     model: str
 
 
+class LearningReportRequest(BaseModel):
+    learning_data: str = Field(..., min_length=1, max_length=50000)
+
+
+class StudentAnalysisRequest(BaseModel):
+    student_data: str = Field(..., min_length=1, max_length=50000)
+
+
 # ============================================================
 # User
 # ============================================================
@@ -550,6 +558,97 @@ class AttendanceDetailOut(BaseModel):
     records: list[AttendanceRecordOut] = []
     created_at: datetime
     closed_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+# ============================================================
+# Resource
+# ============================================================
+
+class ResourceCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    description: Optional[str] = None
+    file_path: str
+    file_name: str = Field(min_length=1, max_length=255)
+    file_size: int = Field(default=0, ge=0)
+    file_type: str = Field(default="other", max_length=64)
+
+
+class ResourceOut(BaseModel):
+    uuid: str
+    course_uuid: str
+    title: str
+    description: Optional[str] = None
+    file_name: str
+    file_size: int
+    file_type: str
+    uploader: Optional[AuthorBriefOut] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ============================================================
+# Assignment
+# ============================================================
+
+class AssignmentCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    description: Optional[str] = None
+    due_date: Optional[datetime] = None
+    total_points: Optional[float] = Field(default=100.0, ge=0)
+
+
+class AssignmentUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    due_date: Optional[datetime] = None
+    total_points: Optional[float] = Field(default=None, ge=0)
+    status: Optional[str] = Field(default=None, pattern="^(open|closed)$")
+
+
+class AssignmentOut(BaseModel):
+    uuid: str
+    course_uuid: str
+    title: str
+    description: Optional[str] = None
+    due_date: Optional[datetime] = None
+    total_points: Optional[float] = None
+    has_attachment: bool = False
+    attachment_name: Optional[str] = None
+    status: str
+    author: Optional[AuthorBriefOut] = None
+    submission_count: int = 0
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+# ============================================================
+# Submission
+# ============================================================
+
+class SubmissionGrade(BaseModel):
+    score: Optional[float] = Field(default=None, ge=0)
+    feedback: Optional[str] = None
+
+
+class SubmissionOut(BaseModel):
+    uuid: str
+    assignment_uuid: str
+    student_uuid: str
+    student_name: str
+    student_no: Optional[str] = None
+    content: Optional[str] = None
+    file_name: Optional[str] = None
+    submitted_at: Optional[datetime] = None
+    score: Optional[float] = None
+    feedback: Optional[str] = None
+    status: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

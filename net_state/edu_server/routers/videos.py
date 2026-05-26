@@ -4,6 +4,9 @@
 """
 
 import os
+import subprocess
+import tempfile
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -27,6 +30,14 @@ from schemas import (
 router = APIRouter()
 
 VIDEO_SERVE_DIR = "/srv/edu/uploads/videos"
+
+_VIDEO_MIME = {
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".mkv": "video/x-matroska",
+    ".avi": "video/x-msvideo",
+    ".mov": "video/quicktime",
+}
 
 
 # ============================================================
@@ -299,3 +310,122 @@ def stream_video(
         return response
 
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video file not found on disk")
+
+
+# ============================================================
+# 视频下载（可选水印）
+# ============================================================
+
+@router.get("/{video_uuid}/download")
+def download_video(
+    video_uuid: str,
+    watermark: bool = Query(default=False),
+    token: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """下载视频文件，可选烧录用户信息水印。
+
+    水印内容: 用户名 + 下载时间，通过 ffmpeg drawtext 滤镜烧录到视频左上角。
+    """
+    user = None
+    if token:
+        try:
+            payload = decode_access_token(token)
+            user_uuid_val = payload.get("sub")
+            if user_uuid_val:
+                user = db.query(User).filter(User.uuid == user_uuid_val, User.status == 1).first()
+        except JWTError:
+            pass
+
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing token")
+
+    video = (
+        db.query(Video)
+        .filter(Video.uuid == video_uuid, Video.status == "normal")
+        .first()
+    )
+    if video is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found")
+
+    if not _check_course_access(video.course_id, user, db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
+
+    file_path = video.file_path
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video file not found on disk")
+
+    if not watermark:
+        ext = os.path.splitext(file_path)[1]
+        media_type = _VIDEO_MIME.get(ext, "application/octet-stream")
+        return FileResponse(
+            file_path,
+            media_type=media_type,
+            filename=video.title + ext,
+            headers={"Content-Disposition": f'attachment; filename="{video.title}{ext}"'},
+        )
+
+    # 水印模式: 使用 ffmpeg 烧录文本
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    watermark_text = f"User: {user.username} | Time: {now_str}"
+
+    suffix = os.path.splitext(file_path)[1] or ".mp4"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp_path = tmp.name
+
+    try:
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", file_path,
+            "-vf", (
+                f"drawtext=text='{watermark_text}':"
+                f"fontcolor=white@0.7:fontsize=20:"
+                f"box=1:boxcolor=black@0.4:"
+                f"x=10:y=10"
+            ),
+            "-c:a", "copy",
+            "-movflags", "+faststart",
+            tmp_path,
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if result.returncode != 0:
+            os.unlink(tmp_path)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Watermark processing failed",
+            )
+
+        ext = os.path.splitext(file_path)[1]
+        media_type = _VIDEO_MIME.get(ext, "application/octet-stream")
+        download_name = f"{video.title}_watermarked{ext}"
+
+        # 使用后台线程清理临时文件
+        import threading
+
+        def _cleanup():
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+        response = FileResponse(
+            tmp_path,
+            media_type=media_type,
+            filename=download_name,
+            headers={"Content-Disposition": f'attachment; filename="{download_name}"'},
+        )
+        response.background = _cleanup
+        return response
+
+    except subprocess.TimeoutExpired:
+        os.unlink(tmp_path)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Watermark processing timed out",
+        )
+    except Exception:
+        os.unlink(tmp_path)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Download failed",
+        )

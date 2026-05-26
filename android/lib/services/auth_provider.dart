@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'api_client.dart';
 
 class AuthProvider extends ChangeNotifier {
@@ -37,7 +37,7 @@ class AuthProvider extends ChangeNotifier {
     } on ApiException catch (e) {
       _error = e.message;
     } catch (e) {
-      _error = '网络连接失败，请检查网络设置';
+      _error = '网络连接失败: $e';
     }
 
     _loading = false;
