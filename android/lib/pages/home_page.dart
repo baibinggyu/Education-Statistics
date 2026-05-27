@@ -93,9 +93,12 @@ class _HomePageState extends State<HomePage> {
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: EdgeInsets.symmetric(vertical: r.vPadding),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: r.maxContentWidth),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
               _buildHeader(context),
               SizedBox(height: r.clamped(16, 10, 24)),
               _buildBanner(context),
@@ -110,6 +113,8 @@ class _HomePageState extends State<HomePage> {
                 _buildRecentCourses(context),
               ],
             ],
+          ),
+          ),
           ),
         ),
       ),
@@ -163,27 +168,37 @@ class _HomePageState extends State<HomePage> {
     final bodySize = r.clamped(13, 11, 15);
     final innerPadding = r.clamped(20, 14, 32);
 
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: r.hPadding),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final minHeight = r.clamped(150, 130, 200);
-          final aspectHeight = constraints.maxWidth * 0.25;
-          final bannerHeight = aspectHeight > minHeight
-              ? aspectHeight
-              : minHeight.toDouble();
+    // 按断点限制横幅最大宽度，窄屏撑满，宽屏居中
+    final bannerMaxWidth = switch (r.breakpoint) {
+      Breakpoint.compact => double.infinity,
+      Breakpoint.medium  => 600.0,
+      Breakpoint.expanded => 720.0,
+    };
 
-          return Container(
-            height: bannerHeight,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(r.radius),
-              gradient: const LinearGradient(
-                colors: [AppColors.primary, AppColors.accent, AppColors.purple],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-            child: Stack(
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: bannerMaxWidth),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: r.hPadding),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final minHeight = r.clamped(150, 130, 200);
+              final aspectHeight = constraints.maxWidth * 0.22;
+              final bannerHeight = aspectHeight > minHeight
+                  ? aspectHeight
+                  : minHeight.toDouble();
+
+              return Container(
+                height: bannerHeight,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(r.radius),
+                  gradient: const LinearGradient(
+                    colors: [AppColors.primary, AppColors.accent, AppColors.purple],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Stack(
               children: [
                 Positioned(
                   right: -20,
@@ -221,6 +236,8 @@ class _HomePageState extends State<HomePage> {
             ),
           );
         },
+      ),
+      ),
       ),
     );
   }

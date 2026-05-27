@@ -507,6 +507,7 @@ class StudentImportResult(BaseModel):
 
 class AttendanceCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
+    mode: str = Field(default="simple", pattern="^(simple|photo)$")
 
 
 class AttendanceMark(BaseModel):
@@ -522,6 +523,8 @@ class AttendanceRecordOut(BaseModel):
     real_name: Optional[str] = None
     status: str
     note: Optional[str] = None
+    has_photo: bool = False
+    photo_url: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -531,6 +534,7 @@ class AttendanceOut(BaseModel):
     uuid: str
     course_uuid: str
     title: str
+    mode: str = "simple"
     status: str
     created_by_name: str
     total: int
@@ -548,6 +552,7 @@ class AttendanceDetailOut(BaseModel):
     uuid: str
     course_uuid: str
     title: str
+    mode: str = "simple"
     status: str
     created_by_name: str
     total: int

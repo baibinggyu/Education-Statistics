@@ -94,6 +94,76 @@ class ApiClient {
     }
   }
 
+  /// POST to an SSE streaming endpoint, accumulate all tokens into final result.
+  /// Returns the same shape as the old JSON endpoint: {content, model}.
+  Future<Map<String, dynamic>> postJsonStream(String path, Map<String, dynamic> data) async {
+    final client = _httpClient();
+    try {
+      final req = await client.postUrl(_uri(path));
+      final headers = _headers();
+      // Accept SSE
+      req.headers.set('Accept', 'text/event-stream');
+      for (final entry in headers.entries) {
+        req.headers.set(entry.key, entry.value);
+      }
+      req.add(utf8.encode(json.encode(data)));
+      final resp = await req.close();
+
+      if (resp.statusCode >= 400) {
+        final bodyBytes = await resp.fold<List<int>>([], (prev, chunk) => prev..addAll(chunk));
+        final body = utf8.decode(bodyBytes);
+        throw ApiException(resp.statusCode, body);
+      }
+
+      final contentBuffer = StringBuffer();
+      var model = '';
+      var hasError = false;
+      var errorMsg = '';
+
+      var buffer = '';
+      await for (final chunk in resp.transform(utf8.decoder)) {
+        buffer += chunk;
+        // Normalize \r\n → \n for cross-platform SSE parsing
+        buffer = buffer.replaceAll('\r\n', '\n');
+        // SSE frames are separated by \n\n
+        while (true) {
+          final idx = buffer.indexOf('\n\n');
+          if (idx == -1) break;
+          final frame = buffer.substring(0, idx);
+          buffer = buffer.substring(idx + 2);
+
+          for (final line in frame.split('\n')) {
+            final trimmed = line.trim();
+            if (!trimmed.startsWith('data: ')) continue;
+            final jsonStr = trimmed.substring(6);
+            try {
+              final obj = json.decode(jsonStr) as Map<String, dynamic>;
+              if (obj.containsKey('error')) {
+                hasError = true;
+                errorMsg = obj['error'] as String? ?? 'Unknown streaming error';
+              } else if (obj.containsKey('token')) {
+                contentBuffer.write(obj['token'] as String? ?? '');
+              } else if (obj.containsKey('done')) {
+                model = obj['model'] as String? ?? '';
+              }
+            } catch (_) {}
+          }
+        }
+      }
+
+      if (hasError) {
+        throw ApiException(502, errorMsg);
+      }
+
+      return {
+        'content': contentBuffer.toString(),
+        'model': model,
+      };
+    } finally {
+      client.close();
+    }
+  }
+
   Future<Map<String, dynamic>> putJson(String path, Map<String, dynamic> data) async {
     final client = _httpClient();
     try {
@@ -353,13 +423,13 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> generateLearningReport(String learningData) async {
-    return await postJson('/api/ai/learning-report', {
+    return await postJsonStream('/api/ai/learning-report', {
       'learning_data': learningData,
     });
   }
 
   Future<Map<String, dynamic>> analyzeStudent(String studentData) async {
-    return await postJson('/api/ai/student-analysis', {
+    return await postJsonStream('/api/ai/student-analysis', {
       'student_data': studentData,
     });
   }
@@ -450,6 +520,11 @@ class ApiClient {
   // -------------------------------------------------------
   // Assignments
   // -------------------------------------------------------
+  Future<Map<String, dynamic>> createAssignment(
+      String courseUuid, Map<String, dynamic> data) async {
+    return await postJson('/api/courses/$courseUuid/assignments', data);
+  }
+
   Future<List<dynamic>> listAssignments(String courseUuid) async {
     return await getJsonArray('/api/courses/$courseUuid/assignments');
   }
@@ -567,9 +642,11 @@ class ApiClient {
     return await getJsonArray('/api/courses/$courseUuid/attendance');
   }
 
-  Future<Map<String, dynamic>> startAttendance(String courseUuid, String title) async {
+  Future<Map<String, dynamic>> startAttendance(
+      String courseUuid, String title, {String mode = 'simple'}) async {
     return await postJson('/api/courses/$courseUuid/attendance', {
       'title': title,
+      'mode': mode,
     });
   }
 
@@ -593,6 +670,60 @@ class ApiClient {
   Future<void> closeAttendance(String courseUuid, String attendanceUuid) async {
     await putJson(
         '/api/courses/$courseUuid/attendance/$attendanceUuid/close', {});
+  }
+
+  Future<Map<String, dynamic>> checkIn(
+      String courseUuid, String attendanceUuid) async {
+    return await postJson(
+        '/api/courses/$courseUuid/attendance/$attendanceUuid/check-in', {});
+  }
+
+  Future<Map<String, dynamic>> checkInWithPhoto(
+      String courseUuid, String attendanceUuid, String filePath) async {
+    final client = _httpClient();
+    try {
+      final uri = _uri(
+          '/api/courses/$courseUuid/attendance/$attendanceUuid/check-in-photo');
+      final request = await client.postUrl(uri);
+      request.headers.set('Authorization', 'Bearer $token');
+      request.headers.set('Accept', 'application/json');
+
+      final boundary = 'boundary_${DateTime.now().millisecondsSinceEpoch}';
+      request.headers.set(
+          'Content-Type', 'multipart/form-data; boundary=$boundary');
+
+      final file = File(filePath);
+      if (!await file.exists()) {
+        throw ApiException(400, 'File not found');
+      }
+
+      final bytes = await file.readAsBytes();
+      final fName = filePath.split('/').last;
+
+      final parts = <List<int>>[];
+      parts.add(utf8.encode('--$boundary\r\n'));
+      parts.add(utf8.encode(
+          'Content-Disposition: form-data; name="file"; filename="$fName"\r\n'));
+      parts.add(utf8.encode(
+          'Content-Type: image/jpeg\r\n\r\n'));
+      parts.add(bytes);
+      parts.add(utf8.encode('\r\n'));
+      parts.add(utf8.encode('--$boundary--\r\n'));
+
+      for (final part in parts) {
+        request.add(part);
+      }
+
+      final resp = await request.close();
+      final body = await resp.transform(utf8.decoder).join();
+      if (resp.statusCode >= 400) {
+        throw ApiException(resp.statusCode, body);
+      }
+      if (body.isEmpty) return {};
+      return json.decode(body) as Map<String, dynamic>;
+    } finally {
+      client.close();
+    }
   }
 
   // -------------------------------------------------------

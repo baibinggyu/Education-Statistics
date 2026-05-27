@@ -46,22 +46,25 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
     final ctrl = TextEditingController(text: _api.username ?? '');
     final result = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('修改用户名'),
-        content: TextField(
-          controller: ctrl,
-          decoration: const InputDecoration(hintText: '请输入新用户名'),
+      builder: (ctx) => Material(
+        type: MaterialType.transparency,
+        child: AlertDialog(
+          title: const Text('修改用户名'),
+          content: TextField(
+            controller: ctrl,
+            decoration: const InputDecoration(hintText: '请输入新用户名'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FButton(
+              onPress: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('保存'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FButton(
-            onPress: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('保存'),
-          ),
-        ],
       ),
     );
 

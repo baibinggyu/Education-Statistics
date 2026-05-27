@@ -279,6 +279,10 @@ class Attendance(Base):
 
     title = Column(String(255), nullable=False)
 
+    mode = Column(
+        Enum("simple", "photo"), nullable=False, default="simple"
+    )
+
     status = Column(
         Enum("open", "closed"), nullable=False, default="open"
     )
@@ -306,6 +310,7 @@ class AttendanceRecord(Base):
         default="present",
     )
     note = Column(Text, nullable=True)
+    photo_path = Column(String(255), nullable=True)
 
     created_at = Column(DateTime, server_default=func.now())
 

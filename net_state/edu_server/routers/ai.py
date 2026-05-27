@@ -1,7 +1,8 @@
 import json
 import os
+from typing import AsyncGenerator
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import Request as URLRequest, urlopen
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -12,6 +13,10 @@ from models import User
 from schemas import AIChatRequest, AIChatResponse, LearningReportRequest, StudentAnalysisRequest
 
 router = APIRouter()
+
+# SSE 超时：nginx 默认 proxy_read_timeout 60s，所以流式写入间隔需 <60s
+# DeepSeek 流式响应每个 token 间隔很短，能保持连接活跃
+_STREAM_TIMEOUT_SECONDS = 300  # 整个流的总超时（5 分钟）
 
 SYSTEM_PROMPT = (
     "你是 EduStat 教学统计系统内置的 AI 助手。"
@@ -52,7 +57,7 @@ def call_deepseek_anthropic(messages: list[dict[str, str]]) -> tuple[str, str]:
     if system_prompts:
         payload["system"] = system_prompts if len(system_prompts) > 1 else system_prompts[0]
 
-    req = Request(
+    req = URLRequest(
         f"{base_url}/v1/messages",
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers={
@@ -114,6 +119,87 @@ def call_deepseek_anthropic(messages: list[dict[str, str]]) -> tuple[str, str]:
     )
 
 
+async def call_deepseek_anthropic_stream(
+    messages: list[dict[str, str]],
+) -> AsyncGenerator[str, None]:
+    """流式调用 DeepSeek Anthropic API，逐 token yield SSE 事件。
+
+    解决 nginx 60s proxy_read_timeout：边生成边推送数据，连接不会超时。
+    """
+    api_key, base_url, model, timeout = _ai_config()
+
+    system_prompts = [m["content"] for m in messages if m.get("role") == "system"]
+    user_messages = [m for m in messages if m.get("role") != "system"]
+
+    payload: dict = {
+        "model": model,
+        "max_tokens": 8192,
+        "stream": True,
+        "messages": user_messages,
+    }
+    if system_prompts:
+        payload["system"] = system_prompts if len(system_prompts) > 1 else system_prompts[0]
+
+    stream_timeout = httpx.Timeout(
+        timeout=_STREAM_TIMEOUT_SECONDS,
+        connect=10.0,
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=stream_timeout) as client:
+            async with client.stream(
+                "POST",
+                f"{base_url}/v1/messages",
+                json=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                },
+            ) as response:
+                if response.status_code != 200:
+                    error_body = await response.aread()
+                    detail = "AI upstream request failed"
+                    try:
+                        parsed = json.loads(error_body)
+                        upstream_error = parsed.get("error")
+                        if isinstance(upstream_error, dict):
+                            detail = upstream_error.get("message") or detail
+                        elif isinstance(upstream_error, str):
+                            detail = upstream_error
+                    except Exception:
+                        pass
+                    yield f"data: {json.dumps({'error': detail})}\n\n"
+                    return
+
+                async for line in response.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(data_str)
+                    except json.JSONDecodeError:
+                        continue
+
+                    evt_type = data.get("type", "")
+                    if evt_type == "content_block_delta":
+                        delta = data.get("delta", {})
+                        text = delta.get("text", "")
+                        if text:
+                            yield f"data: {json.dumps({'token': text}, ensure_ascii=False)}\n\n"
+                    elif evt_type == "message_stop":
+                        break
+
+                yield f"data: {json.dumps({'done': True, 'model': model})}\n\n"
+
+    except httpx.TimeoutException:
+        yield f"data: {json.dumps({'error': 'AI upstream timeout (stream)'})}\n\n"
+    except httpx.ConnectError:
+        yield f"data: {json.dumps({'error': 'AI upstream is unreachable'})}\n\n"
+
+
 @router.post("/chat", response_model=AIChatResponse)
 def chat_with_ai(
     data: AIChatRequest,
@@ -169,15 +255,15 @@ REPORT_SYSTEM_PROMPT = (
 )
 
 
-@router.post("/learning-report", response_model=AIChatResponse)
-def generate_learning_report(
+@router.post("/learning-report")
+async def generate_learning_report(
     data: LearningReportRequest,
     user: User = Depends(get_current_user),
 ):
-    """根据用户学习数据生成 AI 学习报告。
+    """根据用户学习数据生成 AI 学习报告（SSE 流式）。
 
     客户端收集课程进度、视频完成情况等数据，
-    服务端格式化后发送给 DeepSeek 进行分析。
+    服务端流式转发 DeepSeek 生成的报告内容。
     """
     _ = user
     messages = [
@@ -185,8 +271,15 @@ def generate_learning_report(
         {"role": "user", "content": f"以下是我的学习数据，请帮我生成学习报告：\n\n{data.learning_data}"},
     ]
 
-    content, model = call_deepseek_anthropic(messages)
-    return AIChatResponse(content=content, model=model)
+    return StreamingResponse(
+        call_deepseek_anthropic_stream(messages),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 STUDENT_ANALYSIS_SYSTEM_PROMPT = (
@@ -234,15 +327,15 @@ STUDENT_ANALYSIS_SYSTEM_PROMPT = (
 )
 
 
-@router.post("/student-analysis", response_model=AIChatResponse)
-def analyze_student(
+@router.post("/student-analysis")
+async def analyze_student(
     data: StudentAnalysisRequest,
     user: User = Depends(require_teacher_or_admin),
 ):
-    """教师对单个学生进行 AI 学情分析。
+    """教师对单个学生进行 AI 学情分析（SSE 流式）。
 
     客户端收集该学生的成绩、视频进度、出勤等数据，
-    服务端转发给 DeepSeek 生成诊断报告。
+    服务端流式转发 DeepSeek 生成的诊断报告。
     """
     _ = user
     messages = [
@@ -250,8 +343,15 @@ def analyze_student(
         {"role": "user", "content": f"请分析以下学生的学习情况：\n\n{data.student_data}"},
     ]
 
-    content, model = call_deepseek_anthropic(messages)
-    return AIChatResponse(content=content, model=model)
+    return StreamingResponse(
+        call_deepseek_anthropic_stream(messages),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # ============================================================

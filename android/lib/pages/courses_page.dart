@@ -190,6 +190,7 @@ class _CourseDetailScreenState extends State<_CourseDetailScreen> {
   bool _loadingResources = true;
   bool _loadingAssignments = true;
   Map<String, dynamic> _mySubmissions = {};
+  final Set<String> _downloadedVideoUuids = {};
 
   bool get _isTeacher =>
       widget.auth.role == 'teacher' || widget.auth.role == 'admin';
@@ -212,9 +213,32 @@ class _CourseDetailScreenState extends State<_CourseDetailScreen> {
           _videos = videos;
           _loadingVideos = false;
         });
+        await _refreshDownloadedStatus();
       }
     } catch (_) {
       if (mounted) setState(() => _loadingVideos = false);
+    }
+  }
+
+  Future<void> _refreshDownloadedStatus() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final dlDir = Directory('${dir.path}/downloads');
+    final uuids = <String>{};
+    if (await dlDir.exists()) {
+      await for (final entity in dlDir.list()) {
+        final name = entity.uri.pathSegments.isNotEmpty
+            ? entity.uri.pathSegments.last
+            : '';
+        if (name.endsWith('.mp4')) {
+          uuids.add(name.replaceAll('.mp4', ''));
+        }
+      }
+    }
+    if (mounted) {
+      setState(() {
+        _downloadedVideoUuids.clear();
+        _downloadedVideoUuids.addAll(uuids);
+      });
     }
   }
 
@@ -278,7 +302,41 @@ class _CourseDetailScreenState extends State<_CourseDetailScreen> {
 
   Future<void> _downloadVideo(String videoUuid, String title) async {
     final url = widget.auth.api.getVideoDownloadUrl(videoUuid);
-    await _downloadFile(url, '$title.mp4');
+    await _downloadFile(url, '$videoUuid.mp4');
+    if (mounted) {
+      setState(() => _downloadedVideoUuids.add(videoUuid));
+    }
+  }
+
+  bool _isVideoDownloadedSync(String videoUuid) {
+    return _downloadedVideoUuids.contains(videoUuid);
+  }
+
+  Widget _buildDownloadButton(String uuid, String title, Responsive r) {
+    if (_isVideoDownloadedSync(uuid)) {
+      return Container(
+        width: r.clamped(34, 30, 40),
+        height: r.clamped(34, 30, 40),
+        decoration: BoxDecoration(
+          color: AppColors.success.withAlpha(26),
+          borderRadius: BorderRadius.circular(r.clamped(8, 6, 10)),
+        ),
+        child: const Icon(FIcons.check, color: AppColors.success, size: 18),
+      );
+    }
+    return GestureDetector(
+      onTap: () => _downloadVideo(uuid, title),
+      child: Container(
+        width: r.clamped(34, 30, 40),
+        height: r.clamped(34, 30, 40),
+        decoration: BoxDecoration(
+          color: AppColors.primary.withAlpha(26),
+          borderRadius: BorderRadius.circular(r.clamped(8, 6, 10)),
+        ),
+        child: const Icon(FIcons.download,
+            color: AppColors.primary, size: 18),
+      ),
+    );
   }
 
   Future<void> _downloadResource(
@@ -301,55 +359,58 @@ class _CourseDetailScreenState extends State<_CourseDetailScreen> {
     final titleCtrl = TextEditingController();
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('上传资料'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: pathCtrl,
-              decoration: const InputDecoration(
-                labelText: '文件路径',
-                hintText: '/home/user/document.pdf',
+      builder: (ctx) => Material(
+        type: MaterialType.transparency,
+        child: AlertDialog(
+          title: const Text('上传资料'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: pathCtrl,
+                decoration: const InputDecoration(
+                  labelText: '文件路径',
+                  hintText: '/home/user/document.pdf',
+                ),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: titleCtrl,
+                decoration: const InputDecoration(
+                  labelText: '标题（可选，默认使用文件名）',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: titleCtrl,
-              decoration: const InputDecoration(
-                labelText: '标题（可选，默认使用文件名）',
-              ),
+            FButton(
+              onPress: () async {
+                final fp = pathCtrl.text.trim();
+                if (fp.isEmpty) return;
+                try {
+                  final file = File(fp);
+                  if (!await file.exists()) {
+                    return;
+                  }
+                  Navigator.pop(context);
+                  final fileName = fp.split('/').last;
+                  await widget.auth.api.uploadResource(
+                    widget.courseUuid,
+                    fp,
+                    fileName,
+                    title: titleCtrl.text.trim(),
+                  );
+                  await _loadResources();
+                } catch (_) {}
+              },
+              child: const Text('上传'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FButton(
-            onPress: () async {
-              final fp = pathCtrl.text.trim();
-              if (fp.isEmpty) return;
-              try {
-                final file = File(fp);
-                if (!await file.exists()) {
-                  return;
-                }
-                Navigator.pop(ctx);
-                final fileName = fp.split('/').last;
-                await widget.auth.api.uploadResource(
-                  widget.courseUuid,
-                  fp,
-                  fileName,
-                  title: titleCtrl.text.trim(),
-                );
-                await _loadResources();
-              } catch (_) {}
-            },
-            child: const Text('上传'),
-          ),
-        ],
       ),
     );
   }
@@ -482,20 +543,7 @@ class _CourseDetailScreenState extends State<_CourseDetailScreen> {
                 ),
               ),
               SizedBox(width: r.clamped(8, 6, 10)),
-              GestureDetector(
-                onTap: () => _downloadVideo(uuid, title),
-                child: Container(
-                  width: r.clamped(34, 30, 40),
-                  height: r.clamped(34, 30, 40),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withAlpha(26),
-                    borderRadius:
-                        BorderRadius.circular(r.clamped(8, 6, 10)),
-                  ),
-                  child: const Icon(FIcons.download,
-                      color: AppColors.primary, size: 18),
-                ),
-              ),
+              _buildDownloadButton(uuid, title, r),
             ],
           ),
         );
@@ -519,10 +567,22 @@ class _CourseDetailScreenState extends State<_CourseDetailScreen> {
       children: _attendances.map((a) {
         final title = a['title'] as String? ?? '';
         final status = a['status'] as String? ?? 'open';
+        final mode = a['mode'] as String? ?? 'simple';
         final present = a['present_count'] as int? ?? 0;
         final total = a['total'] as int? ?? 0;
+        final attUuid = a['uuid'] as String? ?? '';
         final isOpen = status == 'open';
-        return GlassCard(
+        return GestureDetector(
+          onTap: isOpen
+              ? () {
+                  Navigator.pushNamed(context, '/check-in',
+                      arguments: {
+                        'courseUuid': widget.courseUuid,
+                        'attendanceUuid': attUuid,
+                      });
+                }
+              : null,
+          child: GlassCard(
           margin: EdgeInsets.only(bottom: r.clamped(8, 6, 10)),
           padding: EdgeInsets.symmetric(
               horizontal: r.clamped(16, 12, 20),
@@ -539,7 +599,9 @@ class _CourseDetailScreenState extends State<_CourseDetailScreen> {
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: Icon(
-                  isOpen ? FIcons.check : FIcons.lock,
+                  isOpen
+                      ? (mode == 'photo' ? FIcons.camera : FIcons.check)
+                      : FIcons.lock,
                   color: isOpen ? AppColors.success : colors.textMuted,
                   size: 20,
                 ),
@@ -562,6 +624,7 @@ class _CourseDetailScreenState extends State<_CourseDetailScreen> {
                   label: isOpen ? '进行中' : '已结束',
                   color: isOpen ? AppColors.success : colors.textMuted),
             ],
+          ),
           ),
         );
       }).toList(),
@@ -706,19 +769,43 @@ class _CourseDetailScreenState extends State<_CourseDetailScreen> {
     if (_loadingAssignments) {
       return const Center(child: FCircularProgress());
     }
-    if (_assignments.isEmpty) {
-      return Center(
-        child: Text('暂无作业',
-            style: AppTextStyles.scaled(AppTextStyles.caption, r.scale)),
-      );
-    }
-    return ListView.separated(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      padding: EdgeInsets.all(r.hPadding),
-      itemCount: _assignments.length,
-      separatorBuilder: (_, _) => SizedBox(height: r.clamped(8, 6, 10)),
-      itemBuilder: (context, index) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_isTeacher)
+          Padding(
+            padding: EdgeInsets.symmetric(
+                horizontal: r.hPadding, vertical: r.clamped(8, 4, 12)),
+            child: FButton(
+              onPress: _showCreateAssignmentDialog,
+              size: FButtonSizeVariant.sm,
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(FIcons.plus, size: 16),
+                  SizedBox(width: 6),
+                  Text('布置作业'),
+                ],
+              ),
+            ),
+          ),
+        if (_assignments.isEmpty)
+          Padding(
+            padding: EdgeInsets.all(r.clamped(32, 24, 48)),
+            child: Center(
+              child: Text('暂无作业',
+                  style: AppTextStyles.scaled(
+                      AppTextStyles.caption, r.scale)),
+            ),
+          )
+        else
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.all(r.hPadding),
+            itemCount: _assignments.length,
+            separatorBuilder: (_, _) => SizedBox(height: r.clamped(8, 6, 10)),
+            itemBuilder: (context, index) {
         final a = _assignments[index];
         final uuid = a['uuid'] as String;
         final title = a['title'] as String? ?? '';
@@ -809,6 +896,8 @@ class _CourseDetailScreenState extends State<_CourseDetailScreen> {
           ),
         );
       },
+    ),
+      ],
     );
   }
 
@@ -854,6 +943,140 @@ class _CourseDetailScreenState extends State<_CourseDetailScreen> {
               : (subStatus == 'submitted'
                   ? AppColors.warning
                   : AppColors.primary),
+        ),
+      ),
+    );
+  }
+
+  void _showCreateAssignmentDialog() {
+    final titleCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+    final pointsCtrl = TextEditingController(text: '100');
+    DateTime? dueDate;
+    bool submitting = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) => Material(
+          type: MaterialType.transparency,
+          child: AlertDialog(
+            title: const Text('布置作业'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '作业标题',
+                    hintText: '请输入作业标题',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descCtrl,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: '作业描述',
+                    hintText: '请输入作业描述（可选）',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: pointsCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: '满分',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: () async {
+                    final now = DateTime.now();
+                    final picked = await showDatePicker(
+                      context: dialogCtx,
+                      initialDate: now.add(const Duration(days: 7)),
+                      firstDate: now,
+                      lastDate: now.add(const Duration(days: 365)),
+                    );
+                    if (picked != null) {
+                      final time = await showTimePicker(
+                        context: dialogCtx,
+                        initialTime: TimeOfDay.fromDateTime(
+                            now.add(const Duration(hours: 1))),
+                      );
+                      if (time != null) {
+                        setDialogState(() {
+                          dueDate = DateTime(picked.year, picked.month,
+                              picked.day, time.hour, time.minute);
+                        });
+                      }
+                    }
+                  },
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: '截止日期（可选）',
+                      border: OutlineInputBorder(),
+                      suffixIcon: Icon(Icons.calendar_today, size: 18),
+                    ),
+                    child: Text(
+                      dueDate != null
+                          ? '${dueDate!.year}-${dueDate!.month.toString().padLeft(2, '0')}-${dueDate!.day.toString().padLeft(2, '0')} ${dueDate!.hour.toString().padLeft(2, '0')}:${dueDate!.minute.toString().padLeft(2, '0')}'
+                          : '不设置截止日期',
+                      style: TextStyle(
+                        color: dueDate != null ? null : Colors.grey,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
+              FButton(
+                onPress: submitting
+                    ? null
+                    : () async {
+                        final title = titleCtrl.text.trim();
+                        if (title.isEmpty) return;
+                        setDialogState(() => submitting = true);
+                        try {
+                          await widget.auth.api.createAssignment(
+                            widget.courseUuid,
+                            {
+                              'title': title,
+                              'description': descCtrl.text.trim(),
+                              'total_points':
+                                  double.tryParse(pointsCtrl.text) ?? 100,
+                              if (dueDate != null)
+                                'due_date': dueDate!.toIso8601String(),
+                            },
+                          );
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          _loadAssignments();
+                        } catch (_) {
+                          if (ctx.mounted) {
+                            setDialogState(() => submitting = false);
+                          }
+                        }
+                      },
+                size: FButtonSizeVariant.sm,
+                child: submitting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: FCircularProgress(),
+                      )
+                    : const Text('创建'),
+              ),
+            ],
+          ),
         ),
       ),
     );

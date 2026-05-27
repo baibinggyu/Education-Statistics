@@ -99,7 +99,8 @@ class _ProfilePageState extends State<ProfilePage> {
             _buildStatsRow(context),
             SizedBox(height: r.clamped(20, 12, 28)),
             _buildMenuSection(context, '学习', [
-              _menuItem(FIcons.clipboardList, '我的作业', '查看待提交和已批改的作业'),
+              _menuItem(FIcons.clipboardList, '我的作业', '查看待提交和已批改的作业',
+                  onTap: () => Navigator.pushNamed(context, '/my-homework')),
               _menuItem(FIcons.trendingUp, '学习报告', '学习进度和成绩分析',
                   onTap: () => Navigator.pushNamed(context, '/learning-report')),
               _menuItem(FIcons.fileText, '报告历史', '查看和导出历史报告',

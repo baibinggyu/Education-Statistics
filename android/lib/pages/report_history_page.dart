@@ -98,6 +98,11 @@ class _ReportHistoryPageState extends State<ReportHistoryPage> {
                 ),
               ],
               suffixes: [
+                FButton.icon(
+                  onPress: () => Navigator.pushNamed(context, '/learning-report'),
+                  variant: FButtonVariant.ghost,
+                  child: const Icon(FIcons.plus),
+                ),
                 if (_reports.isNotEmpty)
                   FButton.icon(
                     onPress: _deleteAll,
@@ -131,6 +136,19 @@ class _ReportHistoryPageState extends State<ReportHistoryPage> {
           SizedBox(height: r.clamped(4, 2, 6)),
           Text('生成学习报告或学情分析后会自动保存',
               style: AppTextStyles.scaled(AppTextStyles.small, r.scale)),
+          SizedBox(height: r.clamped(16, 10, 24)),
+          FButton(
+            onPress: () => Navigator.pushNamed(context, '/learning-report'),
+            size: FButtonSizeVariant.sm,
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(FIcons.sparkles, size: 16),
+                SizedBox(width: 6),
+                Text('生成学习报告'),
+              ],
+            ),
+          ),
         ],
       ),
     );

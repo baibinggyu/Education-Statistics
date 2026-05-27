@@ -2,13 +2,15 @@ import os
 import uuid as _uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from typing import Optional
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from database import get_db
 from deps import get_current_user, require_teacher_or_admin
 from models import Assignment, Course, CourseMember, Submission, User
 from schemas import AssignmentCreate, AssignmentOut, AssignmentUpdate, AuthorBriefOut, SubmissionGrade, SubmissionOut
+from security import decode_access_token
 
 router = APIRouter()
 
@@ -424,3 +426,55 @@ def grade_submission(
     db.refresh(s)
 
     return _build_submission_out(s, a.uuid)
+
+
+@router.get("/{course_uuid}/assignments/{assignment_uuid}/submissions/{submission_uuid}/file")
+def download_submission_file(
+    course_uuid: str,
+    assignment_uuid: str,
+    submission_uuid: str,
+    token: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """Download a student's submitted file. Supports ?token=<jwt> for browser access."""
+    from fastapi.responses import FileResponse
+    from jose import JWTError
+
+    user = None
+    if token:
+        try:
+            payload = decode_access_token(token)
+            uid = payload.get("sub")
+            if uid:
+                user = db.query(User).filter(User.uuid == uid, User.status == 1).first()
+        except JWTError:
+            pass
+
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing token")
+
+    course = _get_course_or_404(course_uuid, db)
+
+    # Only teachers/admin can download submissions
+    if user.role != "admin" and course.teacher_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only teachers can download submissions")
+
+    a = (
+        db.query(Assignment)
+        .filter(Assignment.uuid == assignment_uuid)
+        .first()
+    )
+    if a is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+
+    s = (
+        db.query(Submission)
+        .filter(Submission.uuid == submission_uuid)
+        .first()
+    )
+    if s is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
+    if not s.file_path or not os.path.isfile(s.file_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No file attached")
+
+    return FileResponse(s.file_path, filename=s.file_name or "submission")

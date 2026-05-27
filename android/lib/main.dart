@@ -21,6 +21,8 @@ import 'pages/learning_report_page.dart';
 import 'pages/student_analysis_page.dart';
 import 'pages/report_history_page.dart';
 import 'pages/submit_homework_page.dart';
+import 'pages/check_in_page.dart';
+import 'pages/my_homework_page.dart';
 
 void main() {
   MediaKit.ensureInitialized();
@@ -144,6 +146,10 @@ class _EduAppState extends State<EduApp> {
             return MaterialPageRoute(
               builder: (_) => const ReportHistoryPage(),
             );
+          case '/my-homework':
+            return MaterialPageRoute(
+              builder: (_) => MyHomeworkPage(auth: AuthProvider()),
+            );
           case '/student-analysis':
             if (args is Map<String, String>) {
               return MaterialPageRoute(
@@ -163,6 +169,17 @@ class _EduAppState extends State<EduApp> {
                   courseUuid: args['courseUuid'] as String,
                   assignmentUuid: args['assignmentUuid'] as String,
                   assignment: args['assignment'] as Map<String, dynamic>,
+                ),
+              );
+            }
+            return null;
+          case '/check-in':
+            if (args is Map<String, dynamic>) {
+              return MaterialPageRoute(
+                builder: (_) => CheckInPage(
+                  auth: AuthProvider(),
+                  courseUuid: args['courseUuid'] as String,
+                  attendanceUuid: args['attendanceUuid'] as String,
                 ),
               );
             }

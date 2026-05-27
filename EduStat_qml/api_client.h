@@ -103,7 +103,7 @@ public slots:
 
     // --- Attendance ---
     void fetchAttendances(const QString& courseUuid);
-    void startAttendance(const QString& courseUuid, const QString& title);
+    void startAttendance(const QString& courseUuid, const QString& title, const QString& mode = "simple");
     void fetchAttendanceDetail(const QString& courseUuid, const QString& attendanceUuid);
     void markAttendance(const QString& courseUuid, const QString& attendanceUuid,
                         const QString& studentUuid, const QString& status,
@@ -130,6 +130,8 @@ public slots:
     void gradeSubmission(const QString& courseUuid, const QString& assignmentUuid,
                          const QString& submissionUuid, double score,
                          const QString& feedback);
+    void submitAssignmentFile(const QString& courseUuid, const QString& assignmentUuid,
+                              const QString& filePath, const QString& content);
 
     // --- Credential Persistence ---
     Q_INVOKABLE void setRememberMe(bool remember);
@@ -339,6 +341,8 @@ signals:
     void submissionsError(const QString& message);
     void submissionGraded(const QString& uuid);
     void submissionGradeError(const QString& message);
+    void assignmentFileSubmitted(const QVariantMap& submission);
+    void assignmentFileSubmitError(const QString& message);
 
     // File Upload
     void videoUploadProgress(const QString& stage, int percent);

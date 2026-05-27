@@ -1162,6 +1162,70 @@ void ApiClient::gradeSubmission(const QString& courseUuid, const QString& assign
     });
 }
 
+void ApiClient::submitAssignmentFile(const QString& courseUuid, const QString& assignmentUuid,
+                                      const QString& filePath, const QString& content) {
+    QFileInfo fi(filePath);
+    if (!fi.exists()) {
+        emit assignmentFileSubmitError(QStringLiteral("文件不存在: %1").arg(filePath));
+        return;
+    }
+
+    QHttpMultiPart* multi = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+
+    if (!content.isEmpty()) {
+        QHttpPart contentPart;
+        contentPart.setHeader(QNetworkRequest::ContentDispositionHeader,
+                              QStringLiteral("form-data; name=\"content\""));
+        contentPart.setBody(content.toUtf8());
+        multi->append(contentPart);
+    }
+
+    QHttpPart filePart;
+    filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
+                       QStringLiteral("form-data; name=\"file\"; filename=\"%1\"")
+                           .arg(fi.fileName()));
+    QMimeDatabase mimeDb;
+    const QString mimeType = mimeDb.mimeTypeForFile(filePath).name();
+    filePart.setHeader(QNetworkRequest::ContentTypeHeader, mimeType);
+
+    QFile* uploadFile = new QFile(filePath);
+    if (!uploadFile->open(QIODevice::ReadOnly)) {
+        delete multi;
+        delete uploadFile;
+        emit assignmentFileSubmitError(QStringLiteral("无法读取文件"));
+        return;
+    }
+    filePart.setBodyDevice(uploadFile);
+    uploadFile->setParent(multi);
+    multi->append(filePart);
+
+    QNetworkRequest uploadReq(QUrl(server_url_ + "/api/courses/" + courseUuid
+                                   + "/assignments/" + assignmentUuid + "/submissions"));
+    uploadReq.setTransferTimeout(60000);
+    if (!token_.isEmpty())
+        uploadReq.setRawHeader("Authorization", ("Bearer " + token_).toUtf8());
+
+    QNetworkReply* reply = nam_->post(uploadReq, multi);
+    multi->setParent(reply);
+    QPointer<ApiClient> self(this);
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, self]() {
+        reply->deleteLater();
+        if (!self) return;
+        int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        QByteArray body = reply->isOpen() ? reply->readAll() : QByteArray();
+        if (status != 201 && status != 200) {
+            QJsonObject err = QJsonDocument::fromJson(body).object();
+            emit assignmentFileSubmitError(
+                err.value("detail").toString(QStringLiteral("上传失败")));
+            return;
+        }
+        QJsonObject obj = QJsonDocument::fromJson(body).object();
+        QVariantMap result = obj.toVariantMap();
+        emit assignmentFileSubmitted(result);
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Messages
 // ---------------------------------------------------------------------------
@@ -1329,9 +1393,10 @@ void ApiClient::fetchAttendances(const QString& courseUuid) {
     });
 }
 
-void ApiClient::startAttendance(const QString& courseUuid, const QString& title) {
+void ApiClient::startAttendance(const QString& courseUuid, const QString& title, const QString& mode) {
     QJsonObject req;
     req["title"] = title;
+    req["mode"] = mode;
     postJson(QStringLiteral("/api/courses/%1/attendance").arg(courseUuid), req,
              [this](int status, const QJsonObject& body) {
         if (status == 201) {

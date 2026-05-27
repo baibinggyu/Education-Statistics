@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:forui/forui.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/responsive.dart';
@@ -87,40 +88,21 @@ class _SubmitHomeworkPageState extends State<SubmitHomeworkPage> {
     }
   }
 
-  void _pickFile() {
-    final pathCtrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('添加附件'),
-        content: TextField(
-          controller: pathCtrl,
-          decoration: const InputDecoration(
-            hintText: '/path/to/file.pdf',
-            labelText: '文件路径',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FButton(
-            onPress: () {
-              final fp = pathCtrl.text.trim();
-              if (fp.isNotEmpty) {
-                setState(() {
-                  _filePath = fp;
-                  _fileName = fp.split('/').last;
-                });
-              }
-              Navigator.pop(ctx);
-            },
-            child: const Text('确定'),
-          ),
-        ],
-      ),
-    );
+  Future<void> _pickFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.media,
+      );
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        if (mounted) {
+          setState(() {
+            _filePath = file.path;
+            _fileName = file.name;
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   @override
@@ -327,14 +309,17 @@ class _SubmitHomeworkPageState extends State<SubmitHomeworkPage> {
                                 EdgeInsets.all(r.clamped(16, 12, 20)),
                             child: Column(
                               children: [
-                                TextField(
-                                  controller: _contentCtrl,
-                                  maxLines: 6,
-                                  style: AppTextStyles.scaled(
-                                      AppTextStyles.body, r.scale),
-                                  decoration: const InputDecoration(
-                                    hintText: '请输入作业内容...',
-                                    border: InputBorder.none,
+                                Material(
+                                  type: MaterialType.transparency,
+                                  child: TextField(
+                                    controller: _contentCtrl,
+                                    maxLines: 6,
+                                    style: AppTextStyles.scaled(
+                                        AppTextStyles.body, r.scale),
+                                    decoration: const InputDecoration(
+                                      hintText: '请输入作业内容...',
+                                      border: InputBorder.none,
+                                    ),
                                   ),
                                 ),
                                 SizedBox(
